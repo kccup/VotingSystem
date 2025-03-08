@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Voting System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>Vote for Your Favorite Option</h1>
+    <button onclick="castVote('Option A')">Vote for Option A</button>
+    <button onclick="castVote('Option B')">Vote for Option B</button>
+    <button onclick="castVote('Option C')">Vote for Option C</button>
+
+    <h2>Live Results</h2>
+    <ul id="results">
+        <li>Option A: <span id="optionA">0</span></li>
+        <li>Option B: <span id="optionB">0</span></li>
+        <li>Option C: <span id="optionC">0</span></li>
+    </ul>
+
+    <h2>Scan QR Code to Vote</h2>
+    <img id="qrCode" src="" alt="QR Code">
+
+    <script>
+        const socket = io.connect(window.location.origin);
+
+        function castVote(option) {
+            fetch("/vote", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ option: option })
+            });
+        }
+
+        socket.on("update_votes", (votes) => {
+            document.getElementById("optionA").textContent = votes["Option A"];
+            document.getElementById("optionB").textContent = votes["Option B"];
+            document.getElementById("optionC").textContent = votes["Option C"];
+        });
+
+        // Fetch QR code
+        fetch("/generate_qr")
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("qrCode").src = data.qr_code;
+            });
+    </script>
+</body>
+</html>
