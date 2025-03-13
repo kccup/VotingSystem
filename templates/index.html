@@ -296,6 +296,23 @@
     <div class="container text-center">
       <div class="minion-eyes">👁️👁️</div>
       <h1>Bananaaaaa Voting!</h1>
+      <div class="voter-status mb-4">
+        {% if session.get('voter_username') %}
+        <div class="alert alert-info">
+          <p>
+            Logged in as <strong>{{ session.get('voter_username') }}</strong>
+          </p>
+          <a href="/voter/logout" class="btn btn-sm btn-outline-secondary"
+            >Logout</a
+          >
+        </div>
+        {% else %}
+        <div class="login-buttons">
+          <a href="/voter/login" class="btn btn-primary">Login</a>
+          <a href="/voter/register" class="btn btn-outline-primary">Register</a>
+        </div>
+        {% endif %}
+      </div>
       <div class="minion-mouth">😄</div>
 
       <div id="voting-options" class="mb-4">
