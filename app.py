@@ -196,7 +196,10 @@ def generate_qr():
 def reset_votes():
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
+    # Reset vote counts
     c.execute("UPDATE votes SET total_votes = 0")
+    # Reset user voting status so they can vote again
+    c.execute("UPDATE users SET has_voted = 0")
     conn.commit()
     c.execute("SELECT option_name, total_votes FROM votes")
     updated_votes = dict(c.fetchall())
