@@ -203,11 +203,37 @@ def get_votes():
 
 @app.route("/generate_qr")
 def generate_qr():
-    url = request.host_url
-    qr = qrcode.make(url)
-    qr_path = os.path.join("static", "qrcode.png")
-    qr.save("static/qrcode.png")  # Make sure the path exists
-    return jsonify({"qr_code": "/" + qr_path})  # Add leading slash for proper URL
+    # Get the host's IP address instead of using localhost
+    import socket
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    
+    # Create URL with the IP address
+    base_url = f"http://{local_ip}:5000"
+    
+    # Create QR code
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(base_url)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Save the image
+    if not os.path.exists('static'):
+        os.makedirs('static')
+    
+    import time
+    timestamp = int(time.time())
+    filename = f"qrcode_{timestamp}.png"
+    filepath = os.path.join("static", filename)
+    img.save(filepath)
+    
+    return jsonify({"qr_code": f"/static/{filename}"})
 
 # Protect reset votes route
 @app.route("/reset", methods=["POST"])
@@ -302,5 +328,5 @@ def admin():
     conn.close()
     return render_template("admin.html", votes=votes)
 
-if __name__ == "__main__":
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)

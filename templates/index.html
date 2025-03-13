@@ -665,6 +665,50 @@
             qrPlaceholder.appendChild(qrImage);
           });
       }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        // Fetch the QR code
+        fetch("/generate_qr")
+          .then((response) => response.json())
+          .then((data) => {
+            const qrImg = document.getElementById("qr-code");
+            qrImg.src = data.qr_code;
+            qrImg.style.display = "block";
+          })
+          .catch((error) => console.error("Error fetching QR code:", error));
+      });
+    </script>
+
+    <script>
+      // Wait for page to load
+      document.addEventListener("DOMContentLoaded", function () {
+        // Fetch the QR code from the server
+        fetch("/generate_qr")
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Network response was not ok");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            console.log("QR code data received:", data);
+            const qrPlaceholder = document.getElementById("qr-placeholder");
+            qrPlaceholder.innerHTML = "";
+
+            const qrImg = document.createElement("img");
+            qrImg.src = data.qr_code;
+            qrImg.alt = "QR Code for voting";
+            qrImg.style.maxWidth = "200px";
+            qrImg.className = "img-fluid";
+
+            qrPlaceholder.appendChild(qrImg);
+          })
+          .catch((error) => {
+            console.error("Error fetching QR code:", error);
+            document.getElementById("qr-placeholder").innerHTML =
+              '<p class="text-danger">Failed to load QR code</p>';
+          });
+      });
     </script>
   </body>
 </html>
