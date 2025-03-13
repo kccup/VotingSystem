@@ -1,509 +1,653 @@
-
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minion Voting Bananasystem!</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Minion Voting System</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap"
+      rel="stylesheet"
+    />
     <style>
-        :root {
-            --minion-yellow: #FFE13C;
-            --minion-blue: #2C92D1;
-            --minion-overall: #45B1E8;
-            --minion-dark: #333333;
+      :root {
+        --minion-yellow: #ffe13c;
+        --minion-blue: #2c92d1;
+        --minion-overall: #45b1e8;
+        --minion-dark: #333333;
+      }
+
+      body {
+        font-family: "Nunito", sans-serif;
+        background-color: var(--minion-yellow);
+        background-image: url("https://www.transparenttextures.com/patterns/cubes.png");
+        margin: 0;
+        padding: 20px;
+        color: var(--minion-dark);
+        text-align: center;
+        animation: backgroundPulse 20s infinite;
+        transition: all 0.5s;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background-color: white;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        position: relative;
+        overflow: hidden;
+      }
+
+      h1 {
+        color: var(--minion-blue);
+        font-size: 2.5rem;
+        margin-bottom: 30px;
+        text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.1);
+        position: relative;
+      }
+
+      h1:before {
+        content: "🍌";
+        margin-right: 10px;
+      }
+
+      h1:after {
+        content: "🍌";
+        margin-left: 10px;
+      }
+
+      .buttons-container {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin: 40px 0;
+        flex-wrap: wrap;
+      }
+
+      .minion-button {
+        background-color: var(--minion-blue);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        font-size: 1.2rem;
+        padding: 15px 30px;
+        cursor: pointer;
+        transition: all 0.3s;
+        position: relative;
+        font-weight: bold;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      }
+
+      .minion-button:before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(rgba(255, 255, 255, 0.2), transparent);
+      }
+
+      .minion-button:hover {
+        transform: translateY(-5px) scale(1.05);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+      }
+
+      .minion-button:active {
+        transform: translateY(2px);
+      }
+
+      .results-container {
+        background-color: white;
+        border-radius: 15px;
+        padding: 20px;
+        margin: 30px 0;
+        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .result-bar {
+        height: 40px;
+        margin: 15px 0;
+        background-color: #f1f1f1;
+        border-radius: 20px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .result-fill {
+        height: 100%;
+        background-color: var(--minion-yellow);
+        border-right: 5px solid var(--minion-overall);
+        display: flex;
+        align-items: center;
+        padding-left: 15px;
+        font-weight: bold;
+        color: var(--minion-dark);
+        width: 0%;
+        transition: width 1s ease-in-out;
+        position: relative;
+      }
+
+      .result-fill:after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: 10px;
+        background-color: rgba(0, 0, 0, 0.1);
+      }
+
+      .result-count {
+        position: absolute;
+        right: 15px;
+        font-weight: bold;
+        color: var(--minion-dark);
+      }
+
+      .qr-container {
+        margin-top: 40px;
+        text-align: center;
+      }
+
+      #qrCode {
+        max-width: 200px;
+        border: 10px solid white;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        transition: transform 0.3s;
+      }
+
+      #qrCode:hover {
+        transform: scale(1.05);
+      }
+
+      .minion-decoration {
+        position: absolute;
+        width: 100px;
+        opacity: 0.2;
+      }
+
+      .minion-top-left {
+        top: -30px;
+        left: -30px;
+        transform: rotate(-15deg);
+      }
+
+      .minion-bottom-right {
+        bottom: -30px;
+        right: -30px;
+        transform: rotate(15deg);
+      }
+
+      .confetti {
+        position: fixed;
+        width: 15px;
+        height: 15px;
+        background-color: var(--minion-yellow);
+        top: -10px;
+        animation: confetti-fall 3s ease-in-out;
+      }
+
+      @keyframes confetti-fall {
+        0% {
+          transform: translateY(0) rotate(0deg);
+          opacity: 1;
         }
-        
-        body {
-            font-family: 'Nunito', sans-serif;
-            background-color: var(--minion-yellow);
-            background-image: url('https://www.transparenttextures.com/patterns/cubes.png');
-            margin: 0;
-            padding: 20px;
-            color: var(--minion-dark);
-            text-align: center;
-            animation: backgroundPulse 20s infinite;
-            transition: all 0.5s;
+        100% {
+          transform: translateY(100vh) rotate(720deg);
+          opacity: 0;
         }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background-color: white;
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            position: relative;
-            overflow: hidden;
+      }
+
+      @keyframes backgroundPulse {
+        0%,
+        100% {
+          background-position: 0% 0%;
         }
-        
-        h1 {
-            color: var(--minion-blue);
-            font-size: 2.5rem;
-            margin-bottom: 30px;
-            text-shadow: 2px 2px 0px rgba(0,0,0,0.1);
-            position: relative;
+        50% {
+          background-position: 100% 100%;
         }
-        
-        h1:before {
-            content: "🍌";
-            margin-right: 10px;
+      }
+
+      @keyframes bounce {
+        0%,
+        100% {
+          transform: translateY(0);
         }
-        
-        h1:after {
-            content: "🍌";
-            margin-left: 10px;
+        50% {
+          transform: translateY(-15px);
         }
-        
-        .buttons-container {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin: 40px 0;
-            flex-wrap: wrap;
+      }
+
+      .bounce {
+        animation: bounce 0.5s;
+      }
+
+      .minion-eyes {
+        font-size: 2rem;
+        margin-bottom: 20px;
+        letter-spacing: 10px;
+      }
+
+      .minion-mouth {
+        font-size: 1.5rem;
+      }
+
+      /* Socket connection indicator */
+      .socket-connected .minion-eyes {
+        color: green;
+      }
+
+      /* Winner animation */
+      @keyframes winnerPulse {
+        0%,
+        100% {
+          transform: scale(1);
         }
-        
-        .minion-button {
-            background-color: var(--minion-blue);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            font-size: 1.2rem;
-            padding: 15px 30px;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-            font-weight: bold;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        50% {
+          transform: scale(1.05);
         }
-        
-        .minion-button:before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(rgba(255,255,255,0.2), transparent);
-        }
-        
-        .minion-button:hover {
-            transform: translateY(-5px) scale(1.05);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
-        }
-        
-        .minion-button:active {
-            transform: translateY(2px);
-        }
-        
-        .results-container {
-            background-color: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin: 30px 0;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
-        }
-        
-        .result-bar {
-            height: 40px;
-            margin: 15px 0;
-            background-color: #f1f1f1;
-            border-radius: 20px;
-            overflow: hidden;
-            position: relative;
-        }
-        
-        .result-fill {
-            height: 100%;
-            background-color: var(--minion-yellow);
-            border-right: 5px solid var(--minion-overall);
-            display: flex;
-            align-items: center;
-            padding-left: 15px;
-            font-weight: bold;
-            color: var(--minion-dark);
-            width: 0%;
-            transition: width 1s ease-in-out;
-            position: relative;
-        }
-        
-        .result-fill:after {
-            content: "";
-            position: absolute;
-            top: 0;
-            right: 0;
-            height: 100%;
-            width: 10px;
-            background-color: rgba(0,0,0,0.1);
-        }
-        
-        .result-count {
-            position: absolute;
-            right: 15px;
-            font-weight: bold;
-            color: var(--minion-dark);
-        }
-        
-        .qr-container {
-            margin: 40px 0;
-        }
-        
-        #qrCode {
-            max-width: 200px;
-            border: 10px solid white;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            transition: transform 0.3s;
-        }
-        
-        #qrCode:hover {
-            transform: scale(1.05);
-        }
-        
-        .minion-decoration {
-            position: absolute;
-            width: 100px;
-            opacity: 0.2;
-        }
-        
-        .minion-top-left {
-            top: -30px;
-            left: -30px;
-            transform: rotate(-15deg);
-        }
-        
-        .minion-bottom-right {
-            bottom: -30px;
-            right: -30px;
-            transform: rotate(15deg);
-        }
-        
-        .confetti {
-            position: fixed;
-            width: 15px;
-            height: 15px;
-            background-color: var(--minion-yellow);
-            top: -10px;
-            animation: confetti-fall 3s ease-in-out;
-        }
-        
-        @keyframes confetti-fall {
-            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-        }
-        
-        @keyframes backgroundPulse {
-            0%, 100% { background-position: 0% 0%; }
-            50% { background-position: 100% 100%; }
-        }
-        
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-15px); }
-        }
-        
-        .bounce {
-            animation: bounce 0.5s;
-        }
-        
-        .minion-eyes {
-            font-size: 2rem;
-            margin-bottom: 20px;
-            letter-spacing: 10px;
-        }
-        
-        .minion-mouth {
-            font-size: 1.5rem;
-        }
-        
-        /* Socket connection indicator */
-        .socket-connected .minion-eyes {
-            color: green;
-        }
-        
-        /* Winner animation */
-        @keyframes winnerPulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-        
-        .winner {
-            animation: winnerPulse 1s infinite;
-            border-right: 5px solid #FFE13C !important;
-            box-shadow: 0 0 10px rgba(255, 225, 60, 0.5);
-        }
-        
-        .admin-panel {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 2px dashed var(--minion-yellow);
-        }
-        
-        .reset-button {
-            background-color: #ff5555;
-            color: white;
-            border: none;
-            border-radius: 50px;
-            font-size: 1rem;
-            padding: 10px 20px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .reset-button:hover {
-            background-color: #ff3333;
-            transform: scale(1.05);
-        }
-        
-        .minion-highlight {
-            background-color: rgba(255, 225, 60, 0.2);
-            padding: 3px 6px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
+      }
+
+      .winner {
+        animation: winnerPulse 1s infinite;
+        border-right: 5px solid #ffe13c !important;
+        box-shadow: 0 0 10px rgba(255, 225, 60, 0.5);
+      }
+
+      .admin-panel {
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 2px dashed var(--minion-yellow);
+      }
+
+      .reset-button {
+        background-color: #ff5555;
+        color: white;
+        border: none;
+        border-radius: 50px;
+        font-size: 1rem;
+        padding: 10px 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .reset-button:hover {
+        background-color: #ff3333;
+        transform: scale(1.05);
+      }
+
+      .minion-highlight {
+        background-color: rgba(255, 225, 60, 0.2);
+        padding: 3px 6px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
     </style>
-</head>
-<body>
-    <div class="container">
-        <div class="minion-eyes">👁️👁️</div>
-        <h1>Bananaaaaa Voting!</h1>
-        <div class="minion-mouth">😄</div>
-        
-        <div class="buttons-container">
-            <button class="minion-button" onclick="castVote('Option A')">🍌 Banana A 🍌</button>
-            <button class="minion-button" onclick="castVote('Option B')">🍌 Banana B 🍌</button>
-            <button class="minion-button" onclick="castVote('Option C')">🍌 Banana C 🍌</button>
-        </div>
+  </head>
+  <body>
+    <div class="container text-center">
+      <div class="minion-eyes">👁️👁️</div>
+      <h1>Bananaaaaa Voting!</h1>
+      <div class="minion-mouth">😄</div>
 
-        <h2>Live Banana Results</h2>
-        <div class="results-container">
-            <div class="result-bar">
-                <div id="fillA" class="result-fill" style="width: 0%;">Banana A</div>
-                <span class="result-count" id="optionA">0</span>
-            </div>
-            <div class="result-bar">
-                <div id="fillB" class="result-fill" style="width: 0%;">Banana B</div>
-                <span class="result-count" id="optionB">0</span>
-            </div>
-            <div class="result-bar">
-                <div id="fillC" class="result-fill" style="width: 0%;">Banana C</div>
-                <span class="result-count" id="optionC">0</span>
-            </div>
-        </div>
+      <div id="voting-options" class="mb-4">
+        <!-- Will be populated dynamically -->
+      </div>
 
-        <div class="qr-container">
-            <h2>Scan for Banana Power!</h2>
-            <img id="qrCode" src="" alt="Minion QR Code">
+      <div id="votes-display" class="row">
+        <!-- Will be populated dynamically -->
+      </div>
+
+      <div class="qr-container">
+        <h3>Scan to vote:</h3>
+        <div id="qr-placeholder">
+          <p>Loading QR code...</p>
         </div>
-        
-        <div class="admin-panel">
-            <h3>Minion Control Panel</h3>
-            <button class="reset-button" onclick="resetVotes()">Reset All Votes</button>
-        </div>
-        
-        <img src="https://clipart-library.com/image_gallery2/Minion-PNG-Image.png" class="minion-decoration minion-top-left" alt="Minion decoration">
-        <img src="https://clipart-library.com/img/1934547.png" class="minion-decoration minion-bottom-right" alt="Minion decoration">
+      </div>
+
+      <div class="mt-4">
+        <a href="/admin" class="btn btn-secondary">Admin Dashboard</a>
+      </div>
+
+      <div class="mt-4">
+        <a href="/login" class="btn btn-secondary">Admin Access</a>
+      </div>
+
+      <!--
+      <div class="admin-panel">
+        <h3>Minion Control Panel</h3>
+        <button class="reset-button" onclick="resetVotes()">
+          Reset All Votes
+        </button>
+      </div>
+      -->
+
+      <img
+        src="https://clipart-library.com/image_gallery2/Minion-PNG-Image.png"
+        class="minion-decoration minion-top-left"
+        alt="Minion decoration"
+      />
+      <img
+        src="https://clipart-library.com/img/1934547.png"
+        class="minion-decoration minion-bottom-right"
+        alt="Minion decoration"
+      />
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js"></script>
     <script>
-        // Initialize Socket.IO with explicit connection options
-        const socket = io.connect(window.location.origin, {
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
-        });
-        
-        // Socket connection status indicators
-        socket.on('connect', () => {
-            console.log('Socket connected successfully!');
-            document.body.classList.add('socket-connected');
-            
-            // Celebratory animation on connection
-            const minionEyes = document.querySelector('.minion-eyes');
-            minionEyes.textContent = '😎👍';
-            setTimeout(() => minionEyes.textContent = '👁️👁️', 2000);
-        });
-        
-        socket.on('disconnect', () => {
-            console.log('Socket disconnected');
-            document.body.classList.remove('socket-connected');
-            
-            // Sad animation on disconnect
-            const minionEyes = document.querySelector('.minion-eyes');
-            minionEyes.textContent = '😢👎';
-            document.querySelector('.minion-mouth').textContent = '😟';
-        });
+      // Initialize Socket.IO with explicit connection options
+      const socket = io.connect(window.location.origin, {
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+      });
 
-        function createConfetti() {
-            for (let i = 0; i < 30; i++) {
-                const confetti = document.createElement('div');
-                confetti.classList.add('confetti');
-                confetti.style.left = Math.random() * window.innerWidth + 'px';
-                confetti.style.backgroundColor = ['#FFE13C', '#2C92D1', '#ffffff'][Math.floor(Math.random() * 3)];
-                confetti.style.width = Math.random() * 10 + 5 + 'px';
-                confetti.style.height = Math.random() * 10 + 5 + 'px';
-                confetti.style.opacity = Math.random();
-                confetti.style.animationDuration = Math.random() * 3 + 2 + 's';
-                document.body.appendChild(confetti);
-                
-                setTimeout(() => {
-                    document.body.removeChild(confetti);
-                }, 5000);
+      // Socket connection status indicators
+      socket.on("connect", () => {
+        console.log("Socket connected successfully!");
+        document.body.classList.add("socket-connected");
+
+        // Celebratory animation on connection
+        const minionEyes = document.querySelector(".minion-eyes");
+        minionEyes.textContent = "😎👍";
+        setTimeout(() => (minionEyes.textContent = "👁️👁️"), 2000);
+      });
+
+      socket.on("disconnect", () => {
+        console.log("Socket disconnected");
+        document.body.classList.remove("socket-connected");
+
+        // Sad animation on disconnect
+        const minionEyes = document.querySelector(".minion-eyes");
+        minionEyes.textContent = "😢👎";
+        document.querySelector(".minion-mouth").textContent = "😟";
+      });
+
+      function createConfetti() {
+        for (let i = 0; i < 30; i++) {
+          const confetti = document.createElement("div");
+          confetti.classList.add("confetti");
+          confetti.style.left = Math.random() * window.innerWidth + "px";
+          confetti.style.backgroundColor = ["#FFE13C", "#2C92D1", "#ffffff"][
+            Math.floor(Math.random() * 3)
+          ];
+          confetti.style.width = Math.random() * 10 + 5 + "px";
+          confetti.style.height = Math.random() * 10 + 5 + "px";
+          confetti.style.opacity = Math.random();
+          confetti.style.animationDuration = Math.random() * 3 + 2 + "s";
+          document.body.appendChild(confetti);
+
+          setTimeout(() => {
+            document.body.removeChild(confetti);
+          }, 5000);
+        }
+      }
+
+      function castVote(option) {
+        // Show voting animation immediately for better UX
+        animateVoteButton(option);
+        createConfetti();
+        playSound();
+
+        // Change minion expression to excited
+        document.querySelector(".minion-mouth").textContent = "😁";
+        setTimeout(() => {
+          document.querySelector(".minion-mouth").textContent = "😄";
+        }, 2000);
+
+        // Send vote to server
+        fetch("/vote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ option: option }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              console.log("Vote registered successfully!");
+              updateResults(data.votes);
+            } else {
+              console.error("Vote failed:", data.error);
             }
-        }
+          })
+          .catch((error) => {
+            console.error("Error casting vote:", error);
+          });
+      }
 
-        function castVote(option) {
-            // Show voting animation immediately for better UX
-            animateVoteButton(option);
-            createConfetti();
-            playSound();
-            
-            // Change minion expression to excited
-            document.querySelector('.minion-mouth').textContent = '😁';
-            setTimeout(() => {
-                document.querySelector('.minion-mouth').textContent = '😄';
-            }, 2000);
-            
-            // Send vote to server
-            fetch("/vote", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ option: option })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if(data.success) {
-                    console.log("Vote registered successfully!");
-                    // Instantly update UI with new vote counts for smoother experience
-                    updateResults(data.votes);
-                } else {
-                    console.error("Vote failed:", data.error);
-                }
-            })
-            .catch(error => {
-                console.error("Error casting vote:", error);
-            });
-        }
-        
-        function resetVotes() {
-            if (confirm("Are you sure you want to reset all votes? This cannot be undone!")) {
-                fetch("/reset", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if(data.success) {
-                        console.log("Votes reset successfully!");
-                        updateResults(data.votes);
-                        alert("All votes have been reset!");
-                    }
-                })
-                .catch(error => {
-                    console.error("Error resetting votes:", error);
-                });
-            }
-        }
-        
-        function animateVoteButton(option) {
-            const buttons = document.querySelectorAll('.minion-button');
-            buttons.forEach(button => {
-                if (button.textContent.includes(option.split(' ')[1])) {
-                    button.classList.add('bounce');
-                    setTimeout(() => button.classList.remove('bounce'), 500);
-                }
-            });
-        }
-        
-        function playSound() {
-            // List of minion sounds
-            const sounds = [
-                "https://www.myinstants.com/media/sounds/minion-yay.mp3",
-                "https://www.myinstants.com/media/sounds/minion-laugh.mp3",
-                "https://www.myinstants.com/media/sounds/banana_2.mp3"
-            ];
-            
-            const audio = new Audio(sounds[Math.floor(Math.random() * sounds.length)]);
-            audio.volume = 0.5; // Lower volume a bit
-            audio.play().catch(e => console.log("Audio couldn't play automatically"));
-        }
+      function animateVoteButton(option) {
+        const buttons = document.querySelectorAll(".minion-button");
+        buttons.forEach((button) => {
+          if (button.textContent.includes(option.split(" ")[1])) {
+            button.classList.add("bounce");
+            setTimeout(() => button.classList.remove("bounce"), 500);
+          }
+        });
+      }
 
-        function updateResults(votes) {
-            const total = votes["Option A"] + votes["Option B"] + votes["Option C"];
-            const maxValue = Math.max(votes["Option A"], votes["Option B"], votes["Option C"]);
-            
-            // Update count displays
-            document.getElementById("optionA").textContent = votes["Option A"];
-            document.getElementById("optionB").textContent = votes["Option B"];
-            document.getElementById("optionC").textContent = votes["Option C"];
-            
-            // Update progress bars with animation
-            const fillA = document.getElementById("fillA");
-            const fillB = document.getElementById("fillB");
-            const fillC = document.getElementById("fillC");
-            
-            // Calculate percentages with minimum width for visibility
-            const percentA = total > 0 ? Math.max(5, (votes["Option A"] / total * 100)) : 0;
-            const percentB = total > 0 ? Math.max(5, (votes["Option B"] / total * 100)) : 0;
-            const percentC = total > 0 ? Math.max(5, (votes["Option C"] / total * 100)) : 0;
-            
-            // Apply width with transition for smooth animation
-            fillA.style.width = percentA + "%";
-            fillB.style.width = percentB + "%";
-            fillC.style.width = percentC + "%";
-            
-            // Highlight the winning option(s)
-            fillA.style.backgroundColor = votes["Option A"] === maxValue && maxValue > 0 ? "#FFE13C" : "#f9f9a0";
-            fillB.style.backgroundColor = votes["Option B"] === maxValue && maxValue > 0 ? "#FFE13C" : "#f9f9a0";
-            fillC.style.backgroundColor = votes["Option C"] === maxValue && maxValue > 0 ? "#FFE13C" : "#f9f9a0";
-            
-            // Add winner celebration if there's a clear leader
-            if (maxValue > 0 && [votes["Option A"], votes["Option B"], votes["Option C"]].filter(v => v === maxValue).length === 1) {
-                if (votes["Option A"] === maxValue) fillA.classList.add('winner');
-                else fillA.classList.remove('winner');
-                
-                if (votes["Option B"] === maxValue) fillB.classList.add('winner');
-                else fillB.classList.remove('winner');
-                
-                if (votes["Option C"] === maxValue) fillC.classList.add('winner');
-                else fillC.classList.remove('winner');
-            }
-        }
+      function playSound() {
+        // List of minion sounds
+        const sounds = [
+          "https://www.myinstants.com/media/sounds/minion-yay.mp3",
+          "https://www.myinstants.com/media/sounds/minion-laugh.mp3",
+          "https://www.myinstants.com/media/sounds/banana_2.mp3",
+        ];
 
-        // Listen for real-time vote updates from other users
-        socket.on("update_votes", (votes) => {
-            console.log("Received vote update:", votes);
-            updateResults(votes);
+        const audio = new Audio(
+          sounds[Math.floor(Math.random() * sounds.length)]
+        );
+        audio.volume = 0.5; // Lower volume a bit
+        audio
+          .play()
+          .catch((e) => console.log("Audio couldn't play automatically"));
+      }
+
+      function updateResults(votes) {
+        const total = votes["Option A"] + votes["Option B"] + votes["Option C"];
+        const maxValue = Math.max(
+          votes["Option A"],
+          votes["Option B"],
+          votes["Option C"]
+        );
+
+        // Update count displays
+        document.getElementById("optionA").textContent = votes["Option A"];
+        document.getElementById("optionB").textContent = votes["Option B"];
+        document.getElementById("optionC").textContent = votes["Option C"];
+
+        // Update progress bars with animation
+        const fillA = document.getElementById("fillA");
+        const fillB = document.getElementById("fillB");
+        const fillC = document.getElementById("fillC");
+
+        // Calculate percentages with minimum width for visibility
+        const percentA =
+          total > 0 ? Math.max(5, (votes["Option A"] / total) * 100) : 0;
+        const percentB =
+          total > 0 ? Math.max(5, (votes["Option B"] / total) * 100) : 0;
+        const percentC =
+          total > 0 ? Math.max(5, (votes["Option C"] / total) * 100) : 0;
+
+        // Apply width with transition for smooth animation
+        fillA.style.width = percentA + "%";
+        fillB.style.width = percentB + "%";
+        fillC.style.width = percentC + "%";
+
+        // Highlight the winning option(s)
+        fillA.style.backgroundColor =
+          votes["Option A"] === maxValue && maxValue > 0
+            ? "#FFE13C"
+            : "#f9f9a0";
+        fillB.style.backgroundColor =
+          votes["Option B"] === maxValue && maxValue > 0
+            ? "#FFE13C"
+            : "#f9f9a0";
+        fillC.style.backgroundColor =
+          votes["Option C"] === maxValue && maxValue > 0
+            ? "#FFE13C"
+            : "#f9f9a0";
+
+        // Add winner celebration if there's a clear leader
+        if (
+          maxValue > 0 &&
+          [votes["Option A"], votes["Option B"], votes["Option C"]].filter(
+            (v) => v === maxValue
+          ).length === 1
+        ) {
+          if (votes["Option A"] === maxValue) fillA.classList.add("winner");
+          else fillA.classList.remove("winner");
+
+          if (votes["Option B"] === maxValue) fillB.classList.add("winner");
+          else fillB.classList.remove("winner");
+
+          if (votes["Option C"] === maxValue) fillC.classList.add("winner");
+          else fillC.classList.remove("winner");
+        }
+      }
+
+      // Listen for real-time vote updates from other users
+      socket.on("update_votes", (votes) => {
+        console.log("Received vote update:", votes);
+        updateResults(votes);
+      });
+
+      // Fetch QR code on page load
+      fetch("/generate_qr")
+        .then((response) => response.json())
+        .then((data) => {
+          document.getElementById("qrCode").src = data.qr_code;
+        })
+        .catch((error) => {
+          console.error("Error loading QR code:", error);
         });
 
-        // Fetch QR code on page load
-        fetch("/generate_qr")
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById("qrCode").src = data.qr_code;
-            })
-            .catch(error => {
-                console.error("Error loading QR code:", error);
-            });
-        
-        // Fetch initial votes on page load
+      // Fetch initial votes on page load
+      fetch("/get_votes")
+        .then((response) => response.json())
+        .then((data) => {
+          updateResults(data);
+        })
+        .catch((error) => {
+          console.error("Could not fetch initial votes:", error);
+        });
+
+      // Change minion facial expressions randomly
+      setInterval(() => {
+        const mouthExpressions = ["😄", "😁", "🤪", "😝", "😆"];
+        document.querySelector(".minion-mouth").innerText =
+          mouthExpressions[Math.floor(Math.random() * mouthExpressions.length)];
+      }, 3000);
+
+      // Load initial data
+      document.addEventListener("DOMContentLoaded", function () {
+        loadVotingOptions();
+        generateQRCode();
+
+        // Listen for real-time updates
+        socket.on("update_votes", function (votes) {
+          updateVotingDisplay(votes);
+          updateVotingOptions(votes); // Rebuild the voting buttons when options change
+        });
+      });
+
+      function loadVotingOptions() {
         fetch("/get_votes")
-            .then(response => response.json())
-            .then(data => {
-                updateResults(data);
-            })
-            .catch(error => {
-                console.error("Could not fetch initial votes:", error);
-            });
-            
-        // Change minion facial expressions randomly
-        setInterval(() => {
-            const mouthExpressions = ['😄', '😁', '🤪', '😝', '😆'];
-            document.querySelector('.minion-mouth').innerText = 
-                mouthExpressions[Math.floor(Math.random() * mouthExpressions.length)];
-        }, 3000);
+          .then((response) => response.json())
+          .then((votes) => {
+            updateVotingDisplay(votes);
+            updateVotingOptions(votes);
+          });
+      }
+
+      function updateVotingOptions(votes) {
+        const optionsContainer = document.getElementById("voting-options");
+        optionsContainer.innerHTML = "";
+
+        Object.keys(votes)
+          .sort()
+          .forEach((option) => {
+            const button = document.createElement("button");
+            button.textContent = option;
+            button.className = "btn btn-primary option-btn";
+            button.onclick = () => castVote(option);
+            optionsContainer.appendChild(button);
+          });
+      }
+
+      function updateVotingDisplay(votes) {
+        const votesDisplay = document.getElementById("votes-display");
+        votesDisplay.innerHTML = "";
+
+        Object.entries(votes)
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .forEach(([option, count]) => {
+            const col = document.createElement("div");
+            col.className = "col-md-4 mb-3";
+
+            const card = document.createElement("div");
+            card.className = "card";
+
+            const cardBody = document.createElement("div");
+            cardBody.className = "card-body";
+
+            const title = document.createElement("h5");
+            title.className = "card-title";
+            title.textContent = option;
+
+            const voteCount = document.createElement("p");
+            voteCount.className = "card-text";
+            voteCount.textContent = `Votes: ${count}`;
+
+            cardBody.appendChild(title);
+            cardBody.appendChild(voteCount);
+            card.appendChild(cardBody);
+            col.appendChild(card);
+            votesDisplay.appendChild(col);
+          });
+      }
+
+      function castVote(option) {
+        fetch("/vote", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ option: option }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              updateVotingDisplay(data.votes);
+            } else {
+              alert(data.error || "Failed to cast vote");
+            }
+          });
+      }
+
+      function generateQRCode() {
+        fetch("/generate_qr")
+          .then((response) => response.json())
+          .then((data) => {
+            const qrPlaceholder = document.getElementById("qr-placeholder");
+            qrPlaceholder.innerHTML = "";
+
+            const qrImage = document.createElement("img");
+            qrImage.src = data.qr_code;
+            qrImage.className = "qr-code";
+            qrImage.alt = "QR Code to access voting";
+
+            qrPlaceholder.appendChild(qrImage);
+          });
+      }
     </script>
-</body>
+  </body>
 </html>
