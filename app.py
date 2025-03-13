@@ -29,13 +29,31 @@ if not os.path.exists('static'):
 def init_db():
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
+    # Create votes table
     c.execute('''
         CREATE TABLE IF NOT EXISTS votes(
             option_name TEXT PRIMARY KEY,
             total_votes INTEGER NOT NULL
         )
     ''')
-    # Only initialize with default options if table is empty
+    
+    # Create users table with voted_for column
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users(
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL,
+            has_voted INTEGER DEFAULT 0,
+            voted_for TEXT DEFAULT NULL
+        )
+    ''')
+    
+    # Check if voted_for column exists, add it if not
+    try:
+        c.execute("SELECT voted_for FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE users ADD COLUMN voted_for TEXT DEFAULT NULL")
+    
+    # Only initialize with default options if votes table is empty
     c.execute("SELECT COUNT(*) FROM votes")
     count = c.fetchone()[0]
     if count == 0:
@@ -54,24 +72,125 @@ def home():
     c = conn.cursor()
     c.execute("SELECT option_name, total_votes FROM votes")
     votes = dict(c.fetchall())
+    
+    has_voted = False
+    if 'voter_username' in session:
+        username = session['voter_username']
+        c.execute("SELECT has_voted FROM users WHERE username = ?", (username,))
+        user = c.fetchone()
+        has_voted = user[0] == 1 if user else False
+    
     conn.close()
-    return render_template("index.html", votes=votes)
+    return render_template("index.html", votes=votes, has_voted=has_voted)
 
-@app.route("/vote", methods=["POST"])
-def vote():
-    data = request.get_json()
-    option = data.get("option")
-    if option:
+# User registration
+@app.route("/voter/register", methods=["GET", "POST"])
+def register():
+    error = None
+    if request.method == "POST":
+        username = request.form['username']
+        password = request.form['password'] # In production, always hash passwords!
+        
         conn = sqlite3.connect('voting.db')
         c = conn.cursor()
-        c.execute("UPDATE votes SET total_votes = total_votes + 1 WHERE option_name = ?", (option,))
-        conn.commit()
-        c.execute("SELECT option_name, total_votes FROM votes")
-        updated_votes = dict(c.fetchall())
+        
+        # Check if username already exists
+        c.execute("SELECT username FROM users WHERE username = ?", (username,))
+        if c.fetchone() is not None:
+            conn.close()
+            error = "Username already taken. Please choose another."
+        else:
+            c.execute("INSERT INTO users(username, password, has_voted) VALUES(?, ?, 0)", 
+                     (username, password))
+            conn.commit()
+            conn.close()
+            session['voter_username'] = username
+            return redirect(url_for('home'))
+    
+    return render_template("register.html", error=error)
+
+# User login
+@app.route("/voter/login", methods=["GET", "POST"])
+def voter_login():
+    error = None
+    if request.method == "POST":
+        username = request.form['username']
+        password = request.form['password']
+        
+        conn = sqlite3.connect('voting.db')
+        c = conn.cursor()
+        c.execute("SELECT password FROM users WHERE username = ?", (username,))
+        user = c.fetchone()
+        
+        if user is None or user[0] != password:
+            error = "Invalid username or password."
+        else:
+            session['voter_username'] = username
+            conn.close()
+            return redirect(url_for('home'))
+        
         conn.close()
-        socketio.emit("update_votes", updated_votes)
-        return jsonify({"success": True, "votes": updated_votes})
-    return jsonify({"success": False, "error": "Invalid option"}), 400
+    
+    return render_template("voter_login.html", error=error)
+
+# User logout
+@app.route("/voter/logout")
+def voter_logout():
+    session.pop('voter_username', None)
+    return redirect(url_for('home'))
+
+# Modified vote route to allow changing votes
+@app.route("/vote", methods=["POST"])
+def vote():
+    # Check if user is logged in
+    if 'voter_username' not in session:
+        return jsonify({"success": False, "error": "Please login to vote"}), 401
+    
+    username = session['voter_username']
+    
+    # Get the new vote option
+    data = request.get_json()
+    new_option = data.get("option")
+    if not new_option:
+        return jsonify({"success": False, "error": "Invalid option"}), 400
+    
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    
+    # Check if user has already voted and for which option
+    c.execute("SELECT has_voted, voted_for FROM users WHERE username = ?", (username,))
+    user_vote = c.fetchone()
+    
+    if user_vote[0] == 1 and user_vote[1] is not None:
+        # User is changing their vote
+        previous_option = user_vote[1]
+        
+        # Only process if they're actually changing their vote
+        if previous_option != new_option:
+            # Decrement previous choice
+            c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (previous_option,))
+            
+            # Increment new choice
+            c.execute("UPDATE votes SET total_votes = total_votes + 1 WHERE option_name = ?", (new_option,))
+            
+            # Update user's choice
+            c.execute("UPDATE users SET voted_for = ? WHERE username = ?", (new_option, username))
+    else:
+        # Mark user as voted and record their choice
+        c.execute("UPDATE users SET has_voted = 1, voted_for = ? WHERE username = ?", (new_option, username))
+        
+        # Increment new choice
+        c.execute("UPDATE votes SET total_votes = total_votes + 1 WHERE option_name = ?", (new_option,))
+    
+    conn.commit()
+    
+    # Get updated votes
+    c.execute("SELECT option_name, total_votes FROM votes")
+    updated_votes = dict(c.fetchall())
+    conn.close()
+    
+    socketio.emit("update_votes", updated_votes)
+    return jsonify({"success": True, "votes": updated_votes})
 
 @app.route("/get_votes")
 def get_votes():
@@ -96,7 +215,10 @@ def generate_qr():
 def reset_votes():
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
+    # Reset vote counts
     c.execute("UPDATE votes SET total_votes = 0")
+    # Reset user voting status so they can vote again
+    c.execute("UPDATE users SET has_voted = 0, voted_for = NULL")
     conn.commit()
     c.execute("SELECT option_name, total_votes FROM votes")
     updated_votes = dict(c.fetchall())
