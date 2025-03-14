@@ -68,6 +68,10 @@ init_db()
 
 @app.route("/")
 def home():
+    # Redirect to access code page if not verified
+    if 'event_verified' not in session:
+        return redirect(url_for('event_access'))
+        
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
     c.execute("SELECT option_name, total_votes FROM votes")
@@ -142,6 +146,10 @@ def voter_logout():
 # Modified vote route to allow changing votes
 @app.route("/vote", methods=["POST"])
 def vote():
+    # Check if user has verified event access
+    if 'event_verified' not in session:
+        return jsonify({"success": False, "error": "Please enter event access code"}), 403
+    
     # Check if user is logged in
     if 'voter_username' not in session:
         return jsonify({"success": False, "error": "Please login to vote"}), 401
@@ -327,6 +335,24 @@ def admin():
     votes = dict(c.fetchall())
     conn.close()
     return render_template("admin.html", votes=votes)
+
+@app.route("/event-access", methods=["GET", "POST"])
+def event_access():
+    # If user already verified, send them to voting
+    if 'event_verified' in session:
+        return redirect(url_for('home'))
+        
+    if request.method == "POST":
+        code = request.form.get("access_code")
+        # Simple single code for the entire event
+        if code == "CLUBEVENT2025":  # You can change this for each event
+            session['event_verified'] = True
+            return redirect(url_for('home'))
+        else:
+            return render_template("event_access.html", error="Invalid code")
+            
+    # Display the access form for GET requests
+    return render_template("event_access.html")
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
