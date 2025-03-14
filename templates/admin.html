@@ -55,6 +55,34 @@
         </div>
       </div>
 
+      <div class="row mb-4">
+        <div class="col">
+          <h3>Registered Users</h3>
+          <div class="card p-3">
+            <div class="card-body">
+              <p class="text-muted">
+                Total registered users: <span id="user-count">0</span>
+              </p>
+              <div class="table-responsive">
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Has Voted</th>
+                      <th>Voted For</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="users-table">
+                    <!-- Will be filled by JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="row">
         <div class="col">
           <button class="btn btn-danger" id="reset-votes">
@@ -79,6 +107,7 @@
       // Load initial data and set up listeners
       document.addEventListener("DOMContentLoaded", function () {
         loadContestants();
+        loadUsers(); // Add this line
 
         // Set up WebSocket listener
         socket.on("update_votes", function (votes) {
@@ -184,6 +213,82 @@
             .then((data) => {
               if (!data.success) {
                 alert("Failed to reset votes");
+              }
+            });
+        }
+      }
+
+      // Add this new function
+      function loadUsers() {
+        fetch("/get_users")
+          .then((response) => response.json())
+          .then((users) => {
+            updateUsersTable(users);
+          })
+          .catch((error) => console.error("Error loading users:", error));
+      }
+
+      function updateUsersTable(users) {
+        const tableBody = document.getElementById("users-table");
+        const userCount = document.getElementById("user-count");
+
+        tableBody.innerHTML = "";
+        userCount.textContent = users.length;
+
+        users.forEach((user) => {
+          const row = document.createElement("tr");
+
+          // Username cell
+          const nameCell = document.createElement("td");
+          nameCell.textContent = user.username;
+
+          // Has voted cell
+          const votedCell = document.createElement("td");
+          if (user.has_voted) {
+            votedCell.innerHTML = '<span class="badge bg-success">Yes</span>';
+          } else {
+            votedCell.innerHTML = '<span class="badge bg-danger">No</span>';
+          }
+
+          // Voted for cell
+          const choiceCell = document.createElement("td");
+          choiceCell.textContent = user.voted_for || "N/A";
+
+          // Action cell
+          const actionCell = document.createElement("td");
+          const resetBtn = document.createElement("button");
+          resetBtn.textContent = "Reset Vote";
+          resetBtn.className = "btn btn-sm btn-warning";
+          resetBtn.disabled = !user.has_voted;
+          resetBtn.onclick = () => resetUserVote(user.username);
+          actionCell.appendChild(resetBtn);
+
+          // Append all cells
+          row.appendChild(nameCell);
+          row.appendChild(votedCell);
+          row.appendChild(choiceCell);
+          row.appendChild(actionCell);
+          tableBody.appendChild(row);
+        });
+      }
+
+      // Add function to reset a specific user's vote
+      function resetUserVote(username) {
+        if (confirm(`Reset vote for ${username}?`)) {
+          fetch("/reset_user_vote", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ username: username }),
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                loadUsers();
+                loadContestants();
+              } else {
+                alert(data.error || "Failed to reset user vote");
               }
             });
         }

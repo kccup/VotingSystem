@@ -12,6 +12,10 @@
       href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css"
+    />
     <style>
       :root {
         --minion-yellow: #ffe13c;
@@ -307,6 +311,11 @@
     <div class="container text-center">
       <div class="minion-eyes">👁️👁️</div>
       <h1>Bananaaaaa Voting!</h1>
+      <div class="alert alert-warning" role="alert">
+        <i class="bi bi-geo-alt-fill me-2"></i>
+        <strong>Important:</strong> This voting system is for in-person event
+        attendees only. Virtual participation is not permitted.
+      </div>
       <div class="voter-status mb-4">
         {% if session.get('voter_username') %}
         <div class="alert alert-info">
@@ -347,6 +356,13 @@
 
       <div class="mt-4">
         <a href="/login" class="btn btn-secondary">Admin Access</a>
+      </div>
+
+      <!-- Add this new button here -->
+      <div class="mt-4">
+        <button class="btn btn-warning" onclick="confirmBackToAccess()">
+          <i class="bi bi-arrow-left-circle me-2"></i>Back to Access Page
+        </button>
       </div>
 
       <!--
@@ -720,6 +736,20 @@
               '<p class="text-danger">Failed to load QR code</p>';
           });
       });
+
+      function confirmBackToAccess() {
+        if (
+          confirm(
+            "Are you sure you want to return to the access page? You will need to enter the access code again."
+          )
+        ) {
+          // Clear the event verification from session
+          fetch("/clear-event-access", { method: "POST" }).then(() => {
+            // Redirect to event access page
+            window.location.href = "/event-access";
+          });
+        }
+      }
     </script>
   </body>
 </html>
