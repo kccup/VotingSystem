@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_socketio import SocketIO
+from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import qrcode
 import os
@@ -93,7 +94,10 @@ def register():
     error = None
     if request.method == "POST":
         username = request.form['username']
-        password = request.form['password'] # In production, always hash passwords!
+        password = request.form['password']
+        
+        # Hash the password before storing
+        hashed_password = generate_password_hash(password)
         
         conn = sqlite3.connect('voting.db')
         c = conn.cursor()
@@ -105,7 +109,7 @@ def register():
             error = "Username already taken. Please choose another."
         else:
             c.execute("INSERT INTO users(username, password, has_voted) VALUES(?, ?, 0)", 
-                     (username, password))
+                     (username, hashed_password))
             conn.commit()
             conn.close()
             session['voter_username'] = username
@@ -116,26 +120,7 @@ def register():
 # User login
 @app.route("/voter/login", methods=["GET", "POST"])
 def voter_login():
-    error = None
-    if request.method == "POST":
-        username = request.form['username']
-        password = request.form['password']
-        
-        conn = sqlite3.connect('voting.db')
-        c = conn.cursor()
-        c.execute("SELECT password FROM users WHERE username = ?", (username,))
-        user = c.fetchone()
-        
-        if user is None or user[0] != password:
-            error = "Invalid username or password."
-        else:
-            session['voter_username'] = username
-            conn.close()
-            return redirect(url_for('home'))
-        
-        conn.close()
-    
-    return render_template("voter_login.html", error=error)
+    return redirect(url_for('login'))
 
 # User logout
 @app.route("/voter/logout")
@@ -254,10 +239,16 @@ def reset_votes():
     # Reset user voting status so they can vote again
     c.execute("UPDATE users SET has_voted = 0, voted_for = NULL")
     conn.commit()
+    
+    # Get updated votes
     c.execute("SELECT option_name, total_votes FROM votes")
     updated_votes = dict(c.fetchall())
     conn.close()
+    
+    # Emit socket event to update all clients
     socketio.emit("update_votes", updated_votes)
+    socketio.emit("votes_reset", True)  # Signal that votes were reset
+    
     return jsonify({"success": True, "votes": updated_votes})
 
 @app.route("/contestants", methods=["GET"])
@@ -312,17 +303,53 @@ def remove_contestant():
 def login():
     error = None
     if request.method == "POST":
-        if request.form['username'] == ADMIN_USERNAME and request.form['password'] == ADMIN_PASSWORD:
-            session['logged_in'] = True
-            return redirect(url_for('admin'))
+        username = request.form['username']
+        password = request.form['password']
+        login_type = request.form.get('login_type', '')
+        
+        conn = sqlite3.connect('voting.db')
+        c = conn.cursor()
+        
+        if login_type == 'admin':
+            # Admin login logic
+            if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+                session['logged_in'] = True
+                session['is_admin'] = True
+                conn.close()
+                return redirect(url_for('admin'))
+            else:
+                error = 'Invalid administrator credentials'
         else:
-            error = "Invalid credentials. Please try again."
+            # Voter login logic
+            c.execute("SELECT * FROM users WHERE username = ?", (username,))
+            user = c.fetchone()
+            
+            if user:
+                # Check if password is already hashed (contains $ signs)
+                if user[1] and '$' in str(user[1]):
+                    # Password is hashed, use check_password_hash
+                    password_matches = check_password_hash(user[1], password)
+                else:
+                    # Password is stored as plain text, compare directly
+                    password_matches = (user[1] == password)
+                
+                if password_matches:
+                    session['voter_username'] = username
+                    conn.close()
+                    return redirect(url_for('home'))
+            
+            error = 'Invalid username or password'
+        
+        conn.close()
+    
     return render_template("login.html", error=error)
 
 # Logout route
 @app.route("/logout")
 def logout():
     session.pop('logged_in', None)
+    session.pop('is_admin', None)
+    session.pop('voter_username', None)
     return redirect(url_for('home'))
 
 # Protect admin route with login_required decorator
@@ -409,6 +436,63 @@ def reset_user_vote():
     socketio.emit("update_votes", updated_votes)
     
     return jsonify({"success": True})
+
+@app.route("/remove_user", methods=["POST"])
+@login_required
+def remove_user():
+    # Check if user is admin
+    if 'logged_in' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    # Get username from request
+    data = request.get_json()
+    username = data.get("username")
+    
+    if not username:
+        return jsonify({"success": False, "error": "Invalid request"}), 400
+    
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    
+    try:
+        # Get user's current vote
+        c.execute("SELECT has_voted, voted_for FROM users WHERE username = ?", (username,))
+        result = c.fetchone()
+        
+        if not result:
+            return jsonify({"success": False, "error": "User not found"}), 404
+            
+        has_voted, voted_for = result
+        
+        # If user had voted, decrement the vote count
+        votes_changed = False
+        if has_voted and voted_for:
+            c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (voted_for,))
+            votes_changed = True
+        
+        # Delete the user
+        c.execute("DELETE FROM users WHERE username = ?", (username,))
+        
+        conn.commit()
+        
+        # Get updated votes if needed
+        updated_votes = None
+        if votes_changed:
+            c.execute("SELECT option_name, total_votes FROM votes")
+            updated_votes = dict(c.fetchall())
+            # Emit websocket event for real-time updates
+            socketio.emit("update_votes", updated_votes)
+        
+        return jsonify({
+            "success": True, 
+            "votesChanged": votes_changed,
+            "votes": updated_votes
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

@@ -109,9 +109,14 @@
         loadContestants();
         loadUsers(); // Add this line
 
-        // Set up WebSocket listener
+        // Set up WebSocket listeners
         socket.on("update_votes", function (votes) {
           updateContestantTable(votes);
+        });
+
+        socket.on("votes_reset", function () {
+          // Refresh the users table when votes are reset
+          loadUsers();
         });
 
         // Add event listeners
@@ -256,12 +261,21 @@
 
           // Action cell
           const actionCell = document.createElement("td");
+
+          // Reset vote button
           const resetBtn = document.createElement("button");
           resetBtn.textContent = "Reset Vote";
-          resetBtn.className = "btn btn-sm btn-warning";
+          resetBtn.className = "btn btn-sm btn-warning me-2";
           resetBtn.disabled = !user.has_voted;
           resetBtn.onclick = () => resetUserVote(user.username);
           actionCell.appendChild(resetBtn);
+
+          // Add remove user button
+          const removeBtn = document.createElement("button");
+          removeBtn.textContent = "Remove User";
+          removeBtn.className = "btn btn-sm btn-danger";
+          removeBtn.onclick = () => removeUser(user.username);
+          actionCell.appendChild(removeBtn);
 
           // Append all cells
           row.appendChild(nameCell);
@@ -289,6 +303,36 @@
                 loadContestants();
               } else {
                 alert(data.error || "Failed to reset user vote");
+              }
+            });
+        }
+      }
+
+      // Add function to remove a user
+      function removeUser(username) {
+        if (
+          confirm(
+            `Are you sure you want to permanently remove user "${username}"? This action cannot be undone.`
+          )
+        ) {
+          fetch("/remove_user", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ username: username }),
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                // If the user had votes, update the vote counts
+                if (data.votesChanged) {
+                  loadContestants();
+                }
+                // Refresh the users list
+                loadUsers();
+              } else {
+                alert(data.error || "Failed to remove user");
               }
             });
         }
