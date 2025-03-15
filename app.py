@@ -7,6 +7,8 @@ import os
 import sqlite3
 import uuid
 import time
+import base64
+from io import BytesIO
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'banana-secret-key'
@@ -214,37 +216,39 @@ def get_votes():
 
 @app.route("/generate_qr")
 def generate_qr():
-    # Get the host's IP address instead of using localhost
+    """Generate a QR code for accessing the voting page."""
+    # Get the IP address of the host machine on the local network
     import socket
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     
-    # Create URL with the IP address
-    base_url = f"http://{local_ip}:5000"
+    # Get the port from the request or use default
+    port = request.host.split(':')[-1] if ':' in request.host else '5000'
     
-    # Create QR code
+    # Generate QR code with the local network IP instead of localhost
+    qr_url = f"http://{local_ip}:{port}/event-access"
+    
+    # Create QR code image
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=10,
         border=4,
     )
-    qr.add_data(base_url)
+    qr.add_data(qr_url)
     qr.make(fit=True)
     
     img = qr.make_image(fill_color="black", back_color="white")
     
-    # Save the image
-    if not os.path.exists('static'):
-        os.makedirs('static')
+    # Convert to base64 for embedding
+    buffered = BytesIO()
+    img.save(buffered)
+    img_str = base64.b64encode(buffered.getvalue()).decode()
     
-    import time
-    timestamp = int(time.time())
-    filename = f"qrcode_{timestamp}.png"
-    filepath = os.path.join("static", filename)
-    img.save(filepath)
-    
-    return jsonify({"qr_code": f"/static/{filename}"})
+    return jsonify({
+        "qr_code": f"data:image/png;base64,{img_str}",
+        "url": qr_url  # Include the URL for display
+    })
 
 # Protect reset votes route
 @app.route("/reset", methods=["POST"])
@@ -284,7 +288,9 @@ def get_contestants():
     conn.close()
     return jsonify({"contestants": contestants})
 
-@app.route("/contestants/add", methods=["POST"])
+# When adding a contestant (in your add_contestant route)
+@app.route("/add_contestant", methods=["POST"])
+@login_required
 def add_contestant():
     data = request.get_json()
     name = data.get("name")
@@ -300,32 +306,61 @@ def add_contestant():
         updated_votes = dict(c.fetchall())
         conn.close()
         socketio.emit("update_votes", updated_votes)
-        socketio.emit('contestant_added', {
-            'name': name,
-            'votes': 0
+        socketio.emit("contestant_added", {
+            "name": name,
+            "votes": 0
         })
         return jsonify({"success": True, "votes": updated_votes})
     except sqlite3.IntegrityError:
         conn.close()
         return jsonify({"success": False, "error": "Contestant already exists"}), 400
 
-@app.route("/contestants/remove", methods=["POST"])
+# When removing a contestant (in your remove_contestant route)
+@app.route("/remove_contestant", methods=["POST"])
+@login_required
 def remove_contestant():
+    # Check if user is admin
+    if 'is_admin' not in session:
+        return jsonify({"success": False, "error": "Admin access required"}), 403
+    
     data = request.get_json()
-    name = data.get("name")
-    if not name:
-        return jsonify({"success": False, "error": "Invalid contestant name"}), 400
-        
+    contestant_name = data.get("name")
+    
+    if not contestant_name:
+        return jsonify({"success": False, "error": "Contestant name is required"}), 400
+    
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
-    c.execute("DELETE FROM votes WHERE option_name = ?", (name,))
-    conn.commit()
-    c.execute("SELECT option_name, total_votes FROM votes")
-    updated_votes = dict(c.fetchall())
-    conn.close()
-    socketio.emit("update_votes", updated_votes)
-    socketio.emit('contestant_removed', {'name': name})
-    return jsonify({"success": True, "votes": updated_votes})
+    
+    try:
+        # Check if contestant exists
+        c.execute("SELECT option_name FROM votes WHERE option_name = ?", (contestant_name,))
+        if not c.fetchone():
+            conn.close()
+            return jsonify({"success": False, "error": "Contestant not found"}), 404
+        
+        # Reset votes for users who voted for this option
+        c.execute("UPDATE users SET has_voted = 0, voted_for = NULL WHERE voted_for = ?", (contestant_name,))
+        c.execute("UPDATE temp_voters SET has_voted = 0, voted_for = NULL WHERE voted_for = ?", (contestant_name,))
+        
+        # Remove the contestant
+        c.execute("DELETE FROM votes WHERE option_name = ?", (contestant_name,))
+        conn.commit()
+        
+        # Get updated votes
+        c.execute("SELECT option_name, total_votes FROM votes")
+        updated_votes = dict(c.fetchall())
+        
+        # Emit socket events
+        socketio.emit("update_votes", updated_votes)
+        socketio.emit("contestant_removed", {"name": contestant_name})
+        
+        return jsonify({"success": True, "votes": updated_votes})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
 
 # Login route
 @app.route("/login", methods=["GET", "POST"])

@@ -34,6 +34,39 @@
         max-width: 100px;
         margin: 0 auto 20px;
       }
+      .qr-container {
+        margin: 20px auto;
+      }
+      .qr-code {
+        border-radius: 10px;
+        transition: transform 0.3s;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        background: white;
+      }
+      .qr-code:hover {
+        transform: scale(1.05);
+      }
+      .horizontal-divider {
+        width: 80%;
+        text-align: center;
+        position: relative;
+      }
+      .horizontal-divider::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background-color: #dee2e6;
+      }
+      .horizontal-divider span {
+        position: relative;
+        background-color: #ffe13c;
+        padding: 0 15px;
+        font-weight: bold;
+        border-radius: 20px;
+      }
     </style>
   </head>
   <body>
@@ -45,6 +78,27 @@
           alt="Minion"
         />
         <h1>Join Voting Event</h1>
+
+        <div class="text-center mb-4">
+          <div class="qr-container">
+            <h4>Scan to join:</h4>
+            <div id="qr-placeholder" class="mb-3">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading QR code...</span>
+              </div>
+              <p class="text-muted">Loading QR code...</p>
+            </div>
+            <p class="text-muted small">
+              Scan this code to access the voting system
+            </p>
+          </div>
+
+          <div class="d-flex justify-content-center">
+            <div class="horizontal-divider my-4">
+              <span>OR</span>
+            </div>
+          </div>
+        </div>
 
         <form method="post" action="/event-access">
           {% if event_code %}
@@ -101,5 +155,35 @@
         </div>
       </div>
     </div>
+
+    <script>
+      // Fetch the QR code on page load
+      document.addEventListener("DOMContentLoaded", function () {
+        fetch("/generate_qr")
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Network response was not ok");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            const qrPlaceholder = document.getElementById("qr-placeholder");
+            qrPlaceholder.innerHTML = "";
+
+            const qrImg = document.createElement("img");
+            qrImg.src = data.qr_code;
+            qrImg.alt = "QR Code for voting access";
+            qrImg.style.maxWidth = "200px";
+            qrImg.className = "img-fluid qr-code border p-2";
+
+            qrPlaceholder.appendChild(qrImg);
+          })
+          .catch((error) => {
+            console.error("Error fetching QR code:", error);
+            document.getElementById("qr-placeholder").innerHTML =
+              '<p class="text-danger">Failed to load QR code</p>';
+          });
+      });
+    </script>
   </body>
 </html>

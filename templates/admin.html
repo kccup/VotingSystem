@@ -134,10 +134,9 @@
 
       <div class="row">
         <div class="col">
-          <button class="btn btn-danger" id="reset-votes">
-            Reset All Votes
+          <button id="reset-votes" class="btn btn-danger">
+            <i class="bi bi-trash"></i> Reset All Votes
           </button>
-          <a href="/" class="btn btn-secondary">Back to Voting Page</a>
         </div>
       </div>
 
@@ -195,31 +194,36 @@
       }
 
       function updateContestantTable(votes) {
-        const tableBody = document.getElementById("contestants-table");
-        tableBody.innerHTML = "";
+        const table = document.getElementById("contestants-table");
+        table.innerHTML = "";
 
         Object.entries(votes)
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .forEach(([name, voteCount]) => {
+          .sort()
+          .forEach(([name, count]) => {
             const row = document.createElement("tr");
 
+            // Name cell
             const nameCell = document.createElement("td");
             nameCell.textContent = name;
+            row.appendChild(nameCell);
 
+            // Votes cell
             const votesCell = document.createElement("td");
-            votesCell.textContent = voteCount;
+            votesCell.textContent = count;
+            row.appendChild(votesCell);
 
+            // Action cell with remove button
             const actionCell = document.createElement("td");
             const removeBtn = document.createElement("button");
-            removeBtn.textContent = "Remove";
             removeBtn.className = "btn btn-sm btn-danger";
-            removeBtn.onclick = () => removeContestant(name);
+            removeBtn.innerHTML = '<i class="bi bi-trash"></i> Remove';
+            removeBtn.onclick = function () {
+              removeContestant(name);
+            };
             actionCell.appendChild(removeBtn);
-
-            row.appendChild(nameCell);
-            row.appendChild(votesCell);
             row.appendChild(actionCell);
-            tableBody.appendChild(row);
+
+            table.appendChild(row);
           });
       }
 
@@ -250,33 +254,114 @@
       }
 
       function removeContestant(name) {
-        if (confirm(`Are you sure you want to remove ${name}?`)) {
-          fetch("/contestants/remove", {
+        if (
+          confirm(
+            `Are you sure you want to remove "${name}" from the voting options?`
+          )
+        ) {
+          // Show loading state
+          const btn = event.target;
+          const originalText = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML =
+            '<span class="spinner-border spinner-border-sm"></span>';
+
+          // Send request to server
+          fetch("/remove_contestant", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ name: name }),
           })
-            .then((response) => response.json())
-            .then((data) => {
-              if (!data.success) {
-                alert(data.error || "Failed to remove contestant");
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error("Server returned " + response.status);
               }
+              return response.json();
+            })
+            .then((data) => {
+              if (data.success) {
+                showNotification(
+                  `Contestant "${name}" removed successfully`,
+                  "success"
+                );
+                // The row will be removed by the socket event handler
+              } else {
+                showNotification(
+                  `Failed to remove contestant: ${
+                    data.error || "Unknown error"
+                  }`,
+                  "danger"
+                );
+                // Restore button
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+              }
+            })
+            .catch((error) => {
+              console.error("Error removing contestant:", error);
+              showNotification(`Error: ${error.message}`, "danger");
+              // Restore button
+              btn.disabled = false;
+              btn.innerHTML = originalText;
             });
         }
       }
 
+      // Reset all votes function for admin.html
       function resetVotes() {
-        if (confirm("Are you sure you want to reset all votes to zero?")) {
+        if (
+          confirm(
+            "Are you sure you want to reset ALL votes? This action cannot be undone."
+          )
+        ) {
+          // Show loading state
+          const button = document.getElementById("reset-votes");
+          const originalText = button.innerHTML;
+          button.disabled = true;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Resetting...';
+
+          // Call server endpoint
           fetch("/reset", {
             method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
           })
-            .then((response) => response.json())
-            .then((data) => {
-              if (!data.success) {
-                alert("Failed to reset votes");
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(
+                  `Server returned ${response.status}: ${response.statusText}`
+                );
               }
+              return response.json();
+            })
+            .then((data) => {
+              console.log("Reset successful:", data);
+              showNotification(
+                "All votes have been reset successfully",
+                "success"
+              );
+
+              // Reload all data
+              loadContestants();
+              loadUsers();
+              loadTempVoters();
+            })
+            .catch((error) => {
+              console.error("Reset failed:", error);
+              showNotification(
+                `Failed to reset votes: ${error.message}`,
+                "danger"
+              );
+            })
+            .finally(() => {
+              // Restore button state
+              button.disabled = false;
+              button.innerHTML = originalText;
             });
         }
       }
