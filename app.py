@@ -437,5 +437,62 @@ def reset_user_vote():
     
     return jsonify({"success": True})
 
+@app.route("/remove_user", methods=["POST"])
+@login_required
+def remove_user():
+    # Check if user is admin
+    if 'logged_in' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    # Get username from request
+    data = request.get_json()
+    username = data.get("username")
+    
+    if not username:
+        return jsonify({"success": False, "error": "Invalid request"}), 400
+    
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    
+    try:
+        # Get user's current vote
+        c.execute("SELECT has_voted, voted_for FROM users WHERE username = ?", (username,))
+        result = c.fetchone()
+        
+        if not result:
+            return jsonify({"success": False, "error": "User not found"}), 404
+            
+        has_voted, voted_for = result
+        
+        # If user had voted, decrement the vote count
+        votes_changed = False
+        if has_voted and voted_for:
+            c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (voted_for,))
+            votes_changed = True
+        
+        # Delete the user
+        c.execute("DELETE FROM users WHERE username = ?", (username,))
+        
+        conn.commit()
+        
+        # Get updated votes if needed
+        updated_votes = None
+        if votes_changed:
+            c.execute("SELECT option_name, total_votes FROM votes")
+            updated_votes = dict(c.fetchall())
+            # Emit websocket event for real-time updates
+            socketio.emit("update_votes", updated_votes)
+        
+        return jsonify({
+            "success": True, 
+            "votesChanged": votes_changed,
+            "votes": updated_votes
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
