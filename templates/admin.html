@@ -134,8 +134,8 @@
 
       <div class="row">
         <div class="col">
-          <button class="btn btn-danger" id="reset-votes">
-            Reset All Votes
+          <button id="reset-votes" class="btn btn-danger">
+            <i class="bi bi-trash"></i> Reset All Votes
           </button>
           <a href="/" class="btn btn-secondary">Back to Voting Page</a>
         </div>
@@ -267,16 +267,59 @@
         }
       }
 
+      // Reset all votes function for admin.html
       function resetVotes() {
-        if (confirm("Are you sure you want to reset all votes to zero?")) {
+        if (
+          confirm(
+            "Are you sure you want to reset ALL votes? This action cannot be undone."
+          )
+        ) {
+          // Show loading state
+          const button = document.getElementById("reset-votes");
+          const originalText = button.innerHTML;
+          button.disabled = true;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Resetting...';
+
+          // Call server endpoint
           fetch("/reset", {
             method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
           })
-            .then((response) => response.json())
-            .then((data) => {
-              if (!data.success) {
-                alert("Failed to reset votes");
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(
+                  `Server returned ${response.status}: ${response.statusText}`
+                );
               }
+              return response.json();
+            })
+            .then((data) => {
+              console.log("Reset successful:", data);
+              showNotification(
+                "All votes have been reset successfully",
+                "success"
+              );
+
+              // Reload all data
+              loadContestants();
+              loadUsers();
+              loadTempVoters();
+            })
+            .catch((error) => {
+              console.error("Reset failed:", error);
+              showNotification(
+                `Failed to reset votes: ${error.message}`,
+                "danger"
+              );
+            })
+            .finally(() => {
+              // Restore button state
+              button.disabled = false;
+              button.innerHTML = originalText;
             });
         }
       }

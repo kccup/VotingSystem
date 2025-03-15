@@ -7,6 +7,8 @@ import os
 import sqlite3
 import uuid
 import time
+import base64
+from io import BytesIO
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'banana-secret-key'
@@ -214,37 +216,39 @@ def get_votes():
 
 @app.route("/generate_qr")
 def generate_qr():
-    # Get the host's IP address instead of using localhost
+    """Generate a QR code for accessing the voting page."""
+    # Get the IP address of the host machine on the local network
     import socket
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     
-    # Create URL with the IP address
-    base_url = f"http://{local_ip}:5000"
+    # Get the port from the request or use default
+    port = request.host.split(':')[-1] if ':' in request.host else '5000'
     
-    # Create QR code
+    # Generate QR code with the local network IP instead of localhost
+    qr_url = f"http://{local_ip}:{port}/event-access"
+    
+    # Create QR code image
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=10,
         border=4,
     )
-    qr.add_data(base_url)
+    qr.add_data(qr_url)
     qr.make(fit=True)
     
     img = qr.make_image(fill_color="black", back_color="white")
     
-    # Save the image
-    if not os.path.exists('static'):
-        os.makedirs('static')
+    # Convert to base64 for embedding
+    buffered = BytesIO()
+    img.save(buffered)
+    img_str = base64.b64encode(buffered.getvalue()).decode()
     
-    import time
-    timestamp = int(time.time())
-    filename = f"qrcode_{timestamp}.png"
-    filepath = os.path.join("static", filename)
-    img.save(filepath)
-    
-    return jsonify({"qr_code": f"/static/{filename}"})
+    return jsonify({
+        "qr_code": f"data:image/png;base64,{img_str}",
+        "url": qr_url  # Include the URL for display
+    })
 
 # Protect reset votes route
 @app.route("/reset", methods=["POST"])

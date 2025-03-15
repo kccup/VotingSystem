@@ -817,6 +817,21 @@
       socket.on("votes_reset", function () {
         // Show notification that votes were reset
         showNotification("All votes have been reset by the administrator");
+
+        // Create a zero-votes object from existing options
+        fetch("/get_votes")
+          .then((response) => response.json())
+          .then((votes) => {
+            // Create a new object with same keys but zero values
+            const resetVotes = {};
+            Object.keys(votes).forEach((key) => {
+              resetVotes[key] = 0;
+            });
+
+            // Update the UI with all zeros
+            updateVotingOptions(resetVotes);
+            updateVotingDisplay(resetVotes);
+          });
       });
 
       // Connection status indicator for voters too
