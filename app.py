@@ -288,7 +288,9 @@ def get_contestants():
     conn.close()
     return jsonify({"contestants": contestants})
 
-@app.route("/contestants/add", methods=["POST"])
+# When adding a contestant (in your add_contestant route)
+@app.route("/add_contestant", methods=["POST"])
+@login_required
 def add_contestant():
     data = request.get_json()
     name = data.get("name")
@@ -304,32 +306,61 @@ def add_contestant():
         updated_votes = dict(c.fetchall())
         conn.close()
         socketio.emit("update_votes", updated_votes)
-        socketio.emit('contestant_added', {
-            'name': name,
-            'votes': 0
+        socketio.emit("contestant_added", {
+            "name": name,
+            "votes": 0
         })
         return jsonify({"success": True, "votes": updated_votes})
     except sqlite3.IntegrityError:
         conn.close()
         return jsonify({"success": False, "error": "Contestant already exists"}), 400
 
-@app.route("/contestants/remove", methods=["POST"])
+# When removing a contestant (in your remove_contestant route)
+@app.route("/remove_contestant", methods=["POST"])
+@login_required
 def remove_contestant():
+    # Check if user is admin
+    if 'is_admin' not in session:
+        return jsonify({"success": False, "error": "Admin access required"}), 403
+    
     data = request.get_json()
-    name = data.get("name")
-    if not name:
-        return jsonify({"success": False, "error": "Invalid contestant name"}), 400
-        
+    contestant_name = data.get("name")
+    
+    if not contestant_name:
+        return jsonify({"success": False, "error": "Contestant name is required"}), 400
+    
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
-    c.execute("DELETE FROM votes WHERE option_name = ?", (name,))
-    conn.commit()
-    c.execute("SELECT option_name, total_votes FROM votes")
-    updated_votes = dict(c.fetchall())
-    conn.close()
-    socketio.emit("update_votes", updated_votes)
-    socketio.emit('contestant_removed', {'name': name})
-    return jsonify({"success": True, "votes": updated_votes})
+    
+    try:
+        # Check if contestant exists
+        c.execute("SELECT option_name FROM votes WHERE option_name = ?", (contestant_name,))
+        if not c.fetchone():
+            conn.close()
+            return jsonify({"success": False, "error": "Contestant not found"}), 404
+        
+        # Reset votes for users who voted for this option
+        c.execute("UPDATE users SET has_voted = 0, voted_for = NULL WHERE voted_for = ?", (contestant_name,))
+        c.execute("UPDATE temp_voters SET has_voted = 0, voted_for = NULL WHERE voted_for = ?", (contestant_name,))
+        
+        # Remove the contestant
+        c.execute("DELETE FROM votes WHERE option_name = ?", (contestant_name,))
+        conn.commit()
+        
+        # Get updated votes
+        c.execute("SELECT option_name, total_votes FROM votes")
+        updated_votes = dict(c.fetchall())
+        
+        # Emit socket events
+        socketio.emit("update_votes", updated_votes)
+        socketio.emit("contestant_removed", {"name": contestant_name})
+        
+        return jsonify({"success": True, "votes": updated_votes})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
 
 # Login route
 @app.route("/login", methods=["GET", "POST"])

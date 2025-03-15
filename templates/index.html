@@ -932,6 +932,33 @@
           }, 2000);
         }
       });
+
+      // Add these event listeners with your other socket listeners in index.html
+      socket.on("contestant_added", function (data) {
+        console.log("New contestant added:", data.name);
+        showNotification(`New option added: "${data.name}"`, "info");
+
+        // Fetch all updated options to ensure we have the complete list
+        fetch("/get_votes")
+          .then((response) => response.json())
+          .then((votes) => {
+            updateVotingOptions(votes);
+            updateVotingDisplay(votes);
+          });
+      });
+
+      socket.on("contestant_removed", function (data) {
+        console.log("Contestant removed:", data.name);
+        showNotification(`Option removed: "${data.name}"`, "warning");
+
+        // Fetch all updated options to ensure we have the complete list
+        fetch("/get_votes")
+          .then((response) => response.json())
+          .then((votes) => {
+            updateVotingOptions(votes);
+            updateVotingDisplay(votes);
+          });
+      });
     </script>
   </body>
 </html>
