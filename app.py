@@ -354,5 +354,61 @@ def event_access():
     # Display the access form for GET requests
     return render_template("event_access.html")
 
+@app.route("/clear-event-access", methods=["POST"])
+def clear_event_access():
+    # Remove event verification from session
+    session.pop('event_verified', None)
+    return jsonify({"success": True})
+
+@app.route("/get_users")
+@login_required
+def get_users():
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    c.execute("SELECT username, has_voted, voted_for FROM users ORDER BY username")
+    users = []
+    for row in c.fetchall():
+        users.append({
+            "username": row[0],
+            "has_voted": row[1],
+            "voted_for": row[2]
+        })
+    conn.close()
+    return jsonify(users)
+
+@app.route("/reset_user_vote", methods=["POST"])
+@login_required
+def reset_user_vote():
+    data = request.get_json()
+    username = data.get("username")
+    
+    if not username:
+        return jsonify({"success": False, "error": "No username provided"})
+    
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    
+    # Get the user's current vote
+    c.execute("SELECT voted_for FROM users WHERE username = ?", (username,))
+    user = c.fetchone()
+    
+    if user and user[0]:
+        # Decrease vote count for the option they voted for
+        c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (user[0],))
+        
+    # Reset the user's voting status
+    c.execute("UPDATE users SET has_voted = 0, voted_for = NULL WHERE username = ?", (username,))
+    
+    conn.commit()
+    
+    # Get updated votes
+    c.execute("SELECT option_name, total_votes FROM votes")
+    updated_votes = dict(c.fetchall())
+    conn.close()
+    
+    socketio.emit("update_votes", updated_votes)
+    
+    return jsonify({"success": True})
+
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
