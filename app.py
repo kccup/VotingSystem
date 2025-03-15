@@ -5,6 +5,8 @@ from functools import wraps
 import qrcode
 import os
 import sqlite3
+import uuid
+import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'banana-secret-key'
@@ -132,14 +134,10 @@ def voter_logout():
 @app.route("/vote", methods=["POST"])
 def vote():
     # Check if user has verified event access
-    if 'event_verified' not in session:
+    if 'event_verified' not in session or 'voter_id' not in session:
         return jsonify({"success": False, "error": "Please enter event access code"}), 403
     
-    # Check if user is logged in
-    if 'voter_username' not in session:
-        return jsonify({"success": False, "error": "Please login to vote"}), 401
-    
-    username = session['voter_username']
+    voter_id = session['voter_id']
     
     # Get the new vote option
     data = request.get_json()
@@ -151,8 +149,12 @@ def vote():
     c = conn.cursor()
     
     # Check if user has already voted and for which option
-    c.execute("SELECT has_voted, voted_for FROM users WHERE username = ?", (username,))
+    c.execute("SELECT has_voted, voted_for FROM temp_voters WHERE id = ?", (voter_id,))
     user_vote = c.fetchone()
+    
+    if not user_vote:
+        conn.close()
+        return jsonify({"success": False, "error": "Invalid session"}), 401
     
     if user_vote[0] == 1 and user_vote[1] is not None:
         # User is changing their vote
@@ -167,10 +169,10 @@ def vote():
             c.execute("UPDATE votes SET total_votes = total_votes + 1 WHERE option_name = ?", (new_option,))
             
             # Update user's choice
-            c.execute("UPDATE users SET voted_for = ? WHERE username = ?", (new_option, username))
+            c.execute("UPDATE temp_voters SET voted_for = ? WHERE id = ?", (new_option, voter_id))
     else:
         # Mark user as voted and record their choice
-        c.execute("UPDATE users SET has_voted = 1, voted_for = ? WHERE username = ?", (new_option, username))
+        c.execute("UPDATE temp_voters SET has_voted = 1, voted_for = ? WHERE id = ?", (new_option, voter_id))
         
         # Increment new choice
         c.execute("UPDATE votes SET total_votes = total_votes + 1 WHERE option_name = ?", (new_option,))
@@ -182,6 +184,22 @@ def vote():
     updated_votes = dict(c.fetchall())
     conn.close()
     
+    # Emit an event specifically about this user's vote
+    socketio.emit("vote_cast", {
+        "voter_id": voter_id,
+        "nickname": session.get('nickname'),
+        "option": new_option
+    })
+    
+    # Emit a specific event for temp voter votes
+    if 'voter_id' in session:
+        socketio.emit("temp_voter_voted", {
+            "voter_id": voter_id, 
+            "nickname": session.get('nickname'),
+            "option": new_option
+        })
+    
+    # Also emit the overall vote update
     socketio.emit("update_votes", updated_votes)
     return jsonify({"success": True, "votes": updated_votes})
 
@@ -234,10 +252,16 @@ def generate_qr():
 def reset_votes():
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
+    
     # Reset vote counts
     c.execute("UPDATE votes SET total_votes = 0")
-    # Reset user voting status so they can vote again
+    
+    # Reset registered user voting status
     c.execute("UPDATE users SET has_voted = 0, voted_for = NULL")
+    
+    # Also reset temp_voters voting status
+    c.execute("UPDATE temp_voters SET has_voted = 0, voted_for = NULL")
+    
     conn.commit()
     
     # Get updated votes
@@ -276,6 +300,10 @@ def add_contestant():
         updated_votes = dict(c.fetchall())
         conn.close()
         socketio.emit("update_votes", updated_votes)
+        socketio.emit('contestant_added', {
+            'name': name,
+            'votes': 0
+        })
         return jsonify({"success": True, "votes": updated_votes})
     except sqlite3.IntegrityError:
         conn.close()
@@ -296,6 +324,7 @@ def remove_contestant():
     updated_votes = dict(c.fetchall())
     conn.close()
     socketio.emit("update_votes", updated_votes)
+    socketio.emit('contestant_removed', {'name': name})
     return jsonify({"success": True, "votes": updated_votes})
 
 # Login route
@@ -366,17 +395,46 @@ def admin():
 @app.route("/event-access", methods=["GET", "POST"])
 def event_access():
     # If user already verified, send them to voting
-    if 'event_verified' in session:
+    if 'event_verified' in session and 'voter_id' in session:
         return redirect(url_for('home'))
         
     if request.method == "POST":
         code = request.form.get("access_code")
+        nickname = request.form.get("nickname", "").strip()
+        
+        # Validate nickname
+        if not nickname or len(nickname) < 2:
+            return render_template("event_access.html", error="Please enter a valid nickname (at least 2 characters)")
+        
         # Simple single code for the entire event
-        if code == "CLUBEVENT2025":  # You can change this for each event
+        if code == "CLUBEVENT2025":  # Your event code
+            # Generate a unique session ID for this user
+            voter_id = str(uuid.uuid4())
             session['event_verified'] = True
+            session['voter_id'] = voter_id
+            session['nickname'] = nickname
+            
+            # Store in temporary voters table
+            conn = sqlite3.connect('voting.db')
+            c = conn.cursor()
+            c.execute('''CREATE TABLE IF NOT EXISTS temp_voters
+                      (id TEXT PRIMARY KEY, nickname TEXT, joined_at INTEGER, 
+                      has_voted INTEGER DEFAULT 0, voted_for TEXT DEFAULT NULL)''')
+            
+            c.execute("INSERT INTO temp_voters VALUES (?, ?, ?, 0, NULL)", 
+                     (voter_id, nickname, int(time.time())))
+            conn.commit()
+            conn.close()
+            
+            socketio.emit('participant_joined', {
+                'id': voter_id, 
+                'nickname': nickname,
+                'joined_at': int(time.time())
+            })
+            
             return redirect(url_for('home'))
         else:
-            return render_template("event_access.html", error="Invalid code")
+            return render_template("event_access.html", error="Invalid event code")
             
     # Display the access form for GET requests
     return render_template("event_access.html")
@@ -434,6 +492,7 @@ def reset_user_vote():
     conn.close()
     
     socketio.emit("update_votes", updated_votes)
+    socketio.emit('user_vote_reset', {'username': username})
     
     return jsonify({"success": True})
 
@@ -493,6 +552,179 @@ def remove_user():
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         conn.close()
+
+@app.route("/clear-session", methods=["POST"])
+def clear_session():
+    # Store the voter_id to remove from the database
+    voter_id = session.get('voter_id')
+    
+    if voter_id:
+        # Connect to database
+        conn = sqlite3.connect('voting.db')
+        c = conn.cursor()
+        
+        try:
+            # Check if user has voted
+            c.execute("SELECT has_voted, voted_for FROM temp_voters WHERE id = ?", (voter_id,))
+            user_vote = c.fetchone()
+            
+            if user_vote and user_vote[0] == 1 and user_vote[1]:
+                # Decrement vote count for the option they voted for
+                c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (user_vote[1],))
+            
+            # Remove user from temp_voters
+            c.execute("DELETE FROM temp_voters WHERE id = ?", (voter_id,))
+            conn.commit()
+            
+            # Emit websocket event about participant leaving
+            socketio.emit('participant_removed', {'id': voter_id})
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"Error in clear_session: {e}")
+        finally:
+            conn.close()
+    
+    # Clear all session data
+    session.clear()
+    
+    # Return empty response with 204 No Content status
+    return ('', 204)
+
+@app.route("/admin-login", methods=["GET", "POST"])
+def admin_login():
+    error = None
+    if request.method == "POST":
+        username = request.form['username']
+        password = request.form['password']
+        
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session['logged_in'] = True
+            session['is_admin'] = True
+            return redirect(url_for('admin'))
+        else:
+            error = 'Invalid administrator credentials'
+    
+    return render_template("admin_login.html", error=error)
+
+@app.route("/get_temp_voters")
+@login_required
+def get_temp_voters():
+    if 'is_admin' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+        
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    c.execute("SELECT id, nickname, joined_at, has_voted, voted_for FROM temp_voters ORDER BY joined_at DESC")
+    
+    voters = []
+    for row in c.fetchall():
+        voters.append({
+            "id": row[0],
+            "nickname": row[1],
+            "joined_at": row[2],
+            "has_voted": bool(row[3]),
+            "voted_for": row[4]
+        })
+    
+    conn.close()
+    return jsonify({"success": True, "voters": voters})
+
+@app.route("/reset_temp_vote", methods=["POST"])
+@login_required
+def reset_temp_vote():
+    if 'is_admin' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    data = request.get_json()
+    voter_id = data.get("voter_id")
+    
+    if not voter_id:
+        return jsonify({"success": False, "error": "Invalid voter ID"}), 400
+    
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    
+    # Get the voter's current vote
+    c.execute("SELECT voted_for FROM temp_voters WHERE id = ? AND has_voted = 1", (voter_id,))
+    result = c.fetchone()
+    
+    if not result:
+        conn.close()
+        return jsonify({"success": False, "error": "Voter has not voted or does not exist"}), 404
+        
+    voted_for = result[0]
+    
+    # Decrement vote count
+    c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (voted_for,))
+    
+    # Reset voter's status
+    c.execute("UPDATE temp_voters SET has_voted = 0, voted_for = NULL WHERE id = ?", (voter_id,))
+    
+    conn.commit()
+    
+    # Get updated votes
+    c.execute("SELECT option_name, total_votes FROM votes")
+    updated_votes = dict(c.fetchall())
+    conn.close()
+    
+    socketio.emit("update_votes", updated_votes)
+    socketio.emit('temp_vote_reset', {'voter_id': voter_id})
+    
+    return jsonify({"success": True, "votes": updated_votes})
+
+@app.route("/remove_temp_voter", methods=["POST"])
+@login_required
+def remove_temp_voter():
+    if 'is_admin' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    data = request.get_json()
+    voter_id = data.get("voter_id")
+    
+    if not voter_id:
+        return jsonify({"success": False, "error": "Invalid voter ID"}), 400
+    
+    conn = sqlite3.connect('voting.db')
+    c = conn.cursor()
+    
+    # Get the voter's current vote
+    c.execute("SELECT has_voted, voted_for FROM temp_voters WHERE id = ?", (voter_id,))
+    result = c.fetchone()
+    
+    if not result:
+        conn.close()
+        return jsonify({"success": False, "error": "Voter not found"}), 404
+        
+    has_voted, voted_for = result
+    
+    votes_changed = False
+    if has_voted and voted_for:
+        # Decrement vote count
+        c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (voted_for,))
+        votes_changed = True
+    
+    # Remove the voter
+    c.execute("DELETE FROM temp_voters WHERE id = ?", (voter_id,))
+    
+    conn.commit()
+    
+    # Get updated votes if needed
+    updated_votes = None
+    if votes_changed:
+        c.execute("SELECT option_name, total_votes FROM votes")
+        updated_votes = dict(c.fetchall())
+        socketio.emit("update_votes", updated_votes)
+    
+    conn.close()
+    
+    socketio.emit('participant_removed', {'id': voter_id})
+    
+    return jsonify({
+        "success": True,
+        "votesChanged": votes_changed,
+        "votes": updated_votes
+    })
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
