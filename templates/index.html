@@ -326,9 +326,18 @@
             >Logout</a
           >
         </div>
+        {% elif session.get('logged_in') and session.get('is_admin') %}
+        <div class="alert alert-warning">
+          <p>
+            <i class="bi bi-shield-lock-fill"></i>
+            <strong>Admin Mode</strong>
+          </p>
+          <a href="/admin" class="btn btn-sm btn-primary">Admin Dashboard</a>
+          <a href="/logout" class="btn btn-sm btn-outline-secondary">Logout</a>
+        </div>
         {% else %}
         <div class="login-buttons">
-          <a href="/voter/login" class="btn btn-primary">Login</a>
+          <a href="/login" class="btn btn-primary">Login</a>
           <a href="/voter/register" class="btn btn-outline-primary">Register</a>
         </div>
         {% endif %}
@@ -348,14 +357,6 @@
         <div id="qr-placeholder">
           <p>Loading QR code...</p>
         </div>
-      </div>
-
-      <div class="mt-4">
-        <a href="/admin" class="btn btn-secondary">Admin Dashboard</a>
-      </div>
-
-      <div class="mt-4">
-        <a href="/login" class="btn btn-secondary">Admin Access</a>
       </div>
 
       <!-- Add this new button here -->

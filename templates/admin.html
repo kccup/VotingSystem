@@ -109,9 +109,14 @@
         loadContestants();
         loadUsers(); // Add this line
 
-        // Set up WebSocket listener
+        // Set up WebSocket listeners
         socket.on("update_votes", function (votes) {
           updateContestantTable(votes);
+        });
+
+        socket.on("votes_reset", function () {
+          // Refresh the users table when votes are reset
+          loadUsers();
         });
 
         // Add event listeners
