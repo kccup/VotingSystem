@@ -361,6 +361,29 @@
       </div>
       <div class="minion-mouth">😄</div>
 
+      <!-- Add this right above the voting options div -->
+      <div class="search-container mb-3">
+        <div class="input-group">
+          <span class="input-group-text">
+            <i class="bi bi-search"></i>
+          </span>
+          <input
+            type="text"
+            id="search-options"
+            class="form-control"
+            placeholder="Search for contestants..."
+            autocomplete="off"
+          />
+          <button
+            class="btn btn-outline-secondary"
+            type="button"
+            id="clear-search"
+          >
+            <i class="bi bi-x"></i>
+          </button>
+        </div>
+      </div>
+
       <div id="voting-options" class="mb-4">
         <!-- Will be populated dynamically -->
       </div>
@@ -606,6 +629,7 @@
       document.addEventListener("DOMContentLoaded", function () {
         loadVotingOptions();
         generateQRCode();
+        setupSearch(); // Add this line
 
         // Listen for real-time updates
         socket.on("update_votes", function (votes) {
@@ -714,38 +738,6 @@
             qrImg.style.display = "block";
           })
           .catch((error) => console.error("Error fetching QR code:", error));
-      });
-    </script>
-
-    <script>
-      // Wait for page to load
-      document.addEventListener("DOMContentLoaded", function () {
-        // Fetch the QR code from the server
-        fetch("/generate_qr")
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error("Network response was not ok");
-            }
-            return response.json();
-          })
-          .then((data) => {
-            console.log("QR code data received:", data);
-            const qrPlaceholder = document.getElementById("qr-placeholder");
-            qrPlaceholder.innerHTML = "";
-
-            const qrImg = document.createElement("img");
-            qrImg.src = data.qr_code;
-            qrImg.alt = "QR Code for voting";
-            qrImg.style.maxWidth = "200px";
-            qrImg.className = "img-fluid";
-
-            qrPlaceholder.appendChild(qrImg);
-          })
-          .catch((error) => {
-            console.error("Error fetching QR code:", error);
-            document.getElementById("qr-placeholder").innerHTML =
-              '<p class="text-danger">Failed to load QR code</p>';
-          });
       });
 
       function confirmBackToAccess() {
@@ -959,6 +951,56 @@
             updateVotingDisplay(votes);
           });
       });
+
+      // Add this to your JavaScript section
+      function setupSearch() {
+        const searchInput = document.getElementById("search-options");
+        const clearButton = document.getElementById("clear-search");
+
+        searchInput.addEventListener("input", filterOptions);
+        clearButton.addEventListener("click", clearSearch);
+
+        function filterOptions() {
+          const searchTerm = searchInput.value.toLowerCase().trim();
+          const optionButtons = document.querySelectorAll(
+            "#voting-options .option-btn"
+          );
+
+          let hasVisibleOptions = false;
+
+          optionButtons.forEach((button) => {
+            const optionText = button.textContent.toLowerCase();
+            if (searchTerm === "" || optionText.includes(searchTerm)) {
+              button.style.display = "";
+              hasVisibleOptions = true;
+            } else {
+              button.style.display = "none";
+            }
+          });
+
+          // Show message if no options match
+          let noResultsMessage = document.getElementById("no-results-message");
+          if (!hasVisibleOptions) {
+            if (!noResultsMessage) {
+              noResultsMessage = document.createElement("div");
+              noResultsMessage.id = "no-results-message";
+              noResultsMessage.className = "alert alert-info mt-2";
+              noResultsMessage.textContent = "No contestants match your search";
+              document
+                .getElementById("voting-options")
+                .appendChild(noResultsMessage);
+            }
+          } else if (noResultsMessage) {
+            noResultsMessage.remove();
+          }
+        }
+
+        function clearSearch() {
+          searchInput.value = "";
+          filterOptions();
+          searchInput.focus();
+        }
+      }
     </script>
   </body>
 </html>
