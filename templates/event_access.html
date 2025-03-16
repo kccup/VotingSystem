@@ -67,6 +67,26 @@
         font-weight: bold;
         border-radius: 20px;
       }
+      #random-name {
+        background-color: #ffe13c;
+        border-color: #f9d100;
+        color: #333;
+      }
+
+      #random-name:hover {
+        background-color: #f9d100;
+        border-color: #e6c300;
+      }
+
+      /* Make the dropdown match your theme */
+      #nickname {
+        border-color: #dee2e6;
+      }
+
+      #nickname:focus {
+        border-color: #ffe13c;
+        box-shadow: 0 0 0 0.25rem rgba(255, 225, 60, 0.25);
+      }
     </style>
   </head>
   <body>
@@ -110,18 +130,36 @@
 
           <div class="mb-4">
             <label for="nickname" class="form-label"
-              >Enter your nickname:</label
+              >Choose your Minion name:</label
             >
-            <input
-              type="text"
-              class="form-control form-control-lg text-center"
-              id="nickname"
-              name="nickname"
-              placeholder="Your nickname"
-              required
-              maxlength="15"
-              autocomplete="off"
-            />
+            <div class="input-group">
+              <select
+                class="form-select form-select-lg text-center"
+                id="nickname"
+                name="nickname"
+                required
+              >
+                <option value="" disabled selected>Select a name</option>
+                <option value="Stuart">Stuart</option>
+                <option value="Kevin">Kevin</option>
+                <option value="Bob">Bob</option>
+                <option value="Dave">Dave</option>
+                <option value="Jerry">Jerry</option>
+                <option value="Tim">Tim</option>
+                <option value="Carl">Carl</option>
+                <option value="Phil">Phil</option>
+                <option value="Tom">Tom</option>
+                <option value="Mark">Mark</option>
+                <option value="Norbert">Norbert</option>
+                <option value="Steve">Steve</option>
+                <option value="Ken">Ken</option>
+                <option value="Jorge">Jorge</option>
+                <option value="Lance">Lance</option>
+              </select>
+              <button type="button" class="btn btn-warning" id="random-name">
+                <i class="bi bi-shuffle"></i> Random
+              </button>
+            </div>
           </div>
 
           <div class="mb-4">
@@ -183,6 +221,126 @@
             document.getElementById("qr-placeholder").innerHTML =
               '<p class="text-danger">Failed to load QR code</p>';
           });
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Additional minion names and titles
+        const minionTitles = [
+          "the Banana Lover",
+          "the Brave",
+          "the Silly",
+          "the Wise",
+          "the Adventurer",
+          "the Troublemaker",
+          "the Giggler",
+          "the Prankster",
+          "the Curious",
+          "the Banana King",
+          "the Unstoppable",
+          "the Legend",
+        ];
+
+        // Track used names in localStorage to simulate server-side tracking
+        let usedNames = [];
+        try {
+          const stored = localStorage.getItem("usedMinionNames");
+          if (stored) usedNames = JSON.parse(stored);
+        } catch (e) {
+          console.log("Could not load used names");
+        }
+
+        const randomNameBtn = document.getElementById("random-name");
+        const nicknameSelect = document.getElementById("nickname");
+
+        // Get all base name options (without any modifications)
+        const allBaseNames = Array.from(nicknameSelect.options)
+          .slice(1) // Skip the placeholder
+          .map((opt) => opt.value);
+
+        function generateName() {
+          // First try: Use a base name if any are available
+          const availableBaseNames = allBaseNames.filter(
+            (name) => !usedNames.includes(name)
+          );
+
+          if (availableBaseNames.length > 0) {
+            // We still have unused base names
+            const randomName =
+              availableBaseNames[
+                Math.floor(Math.random() * availableBaseNames.length)
+              ];
+            selectNameInDropdown(randomName);
+            return;
+          }
+
+          // Second try: Add a title to a base name
+          const baseName =
+            allBaseNames[Math.floor(Math.random() * allBaseNames.length)];
+          const randomTitle =
+            minionTitles[Math.floor(Math.random() * minionTitles.length)];
+          const nameWithTitle = `${baseName} ${randomTitle}`;
+
+          // Check if this titled name is used
+          if (!usedNames.includes(nameWithTitle)) {
+            addNameToDropdown(nameWithTitle);
+            return;
+          }
+
+          // Third try: Add a random number as last resort
+          let nameWithNumber;
+          do {
+            const randomNumber = Math.floor(Math.random() * 99) + 1;
+            nameWithNumber = `${baseName} #${randomNumber}`;
+          } while (usedNames.includes(nameWithNumber));
+
+          addNameToDropdown(nameWithNumber);
+        }
+
+        function addNameToDropdown(name) {
+          // Add the new name to the dropdown
+          const newOption = document.createElement("option");
+          newOption.text = name;
+          newOption.value = name;
+          nicknameSelect.add(newOption);
+          newOption.selected = true;
+        }
+
+        function selectNameInDropdown(name) {
+          // Find and select existing name in dropdown
+          for (let i = 0; i < nicknameSelect.options.length; i++) {
+            if (nicknameSelect.options[i].value === name) {
+              nicknameSelect.selectedIndex = i;
+              return;
+            }
+          }
+        }
+
+        function rememberSelectedName() {
+          // Save selected name to used names
+          if (nicknameSelect.selectedIndex > 0) {
+            const selectedName =
+              nicknameSelect.options[nicknameSelect.selectedIndex].value;
+            if (!usedNames.includes(selectedName)) {
+              usedNames.push(selectedName);
+              localStorage.setItem(
+                "usedMinionNames",
+                JSON.stringify(usedNames)
+              );
+            }
+          }
+        }
+
+        // Add event listeners
+        randomNameBtn.addEventListener("click", generateName);
+        nicknameSelect.addEventListener("change", rememberSelectedName);
+
+        // Generate a random name on page load
+        generateName();
+
+        // Add form submission handler to remember the final chosen name
+        const form = document.querySelector("form");
+        form.addEventListener("submit", rememberSelectedName);
       });
     </script>
   </body>
