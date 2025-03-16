@@ -196,9 +196,9 @@ def vote():
     # Emit a specific event for temp voter votes
     if 'voter_id' in session:
         socketio.emit("temp_voter_voted", {
-            "voter_id": voter_id, 
-            "nickname": session.get('nickname'),
-            "option": new_option
+            "voter_id": session['voter_id'],  # Make sure this is the correct ID format
+            "nickname": session.get('nickname', 'Unknown'),
+            "option": new_option  # Make sure this contains the option name
         })
     
     # Also emit the overall vote update
@@ -668,45 +668,66 @@ def get_temp_voters():
 @app.route("/reset_temp_vote", methods=["POST"])
 @login_required
 def reset_temp_vote():
+    # Check if user is admin
     if 'is_admin' not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 403
+        return jsonify({"success": False, "error": "Admin access required"}), 403
     
     data = request.get_json()
     voter_id = data.get("voter_id")
     
     if not voter_id:
-        return jsonify({"success": False, "error": "Invalid voter ID"}), 400
+        return jsonify({"success": False, "error": "Voter ID is required"}), 400
     
     conn = sqlite3.connect('voting.db')
     c = conn.cursor()
     
-    # Get the voter's current vote
-    c.execute("SELECT voted_for FROM temp_voters WHERE id = ? AND has_voted = 1", (voter_id,))
-    result = c.fetchone()
-    
-    if not result:
-        conn.close()
-        return jsonify({"success": False, "error": "Voter has not voted or does not exist"}), 404
+    try:
+        # Get current vote information before reset
+        c.execute("SELECT has_voted, voted_for FROM temp_voters WHERE id = ?", (voter_id,))
+        result = c.fetchone()
         
-    voted_for = result[0]
-    
-    # Decrement vote count
-    c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (voted_for,))
-    
-    # Reset voter's status
-    c.execute("UPDATE temp_voters SET has_voted = 0, voted_for = NULL WHERE id = ?", (voter_id,))
-    
-    conn.commit()
-    
-    # Get updated votes
-    c.execute("SELECT option_name, total_votes FROM votes")
-    updated_votes = dict(c.fetchall())
-    conn.close()
-    
-    socketio.emit("update_votes", updated_votes)
-    socketio.emit('temp_vote_reset', {'voter_id': voter_id})
-    
-    return jsonify({"success": True, "votes": updated_votes})
+        if not result:
+            conn.close()
+            return jsonify({"success": False, "error": "Voter not found"}), 404
+            
+        has_voted, option = result
+        
+        if not has_voted:
+            conn.close()
+            return jsonify({"success": False, "error": "User has not voted"}), 400
+        
+        # Decrement vote count for the option
+        if option:
+            c.execute("UPDATE votes SET total_votes = total_votes - 1 WHERE option_name = ?", (option,))
+        
+        # Reset the voter's status
+        c.execute("UPDATE temp_voters SET has_voted = 0, voted_for = NULL WHERE id = ?", (voter_id,))
+        conn.commit()
+        
+        # Get updated votes
+        c.execute("SELECT option_name, total_votes FROM votes")
+        updated_votes = dict(c.fetchall())
+        
+        # Get voter nickname for the event
+        c.execute("SELECT nickname FROM temp_voters WHERE id = ?", (voter_id,))
+        result = c.fetchone()
+        nickname = result[0] if result else "Unknown"
+        conn.close()
+        
+        # Emit socket events
+        socketio.emit("update_votes", updated_votes)
+        socketio.emit("temp_vote_reset", {"voter_id": voter_id, "nickname": nickname})
+        socketio.emit("participant_vote_reset", {"voter_id": voter_id})
+        
+        return jsonify({
+            "success": True, 
+            "votes": updated_votes,
+            "voter_id": voter_id
+        })
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/remove_temp_voter", methods=["POST"])
 @login_required

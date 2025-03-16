@@ -431,7 +431,7 @@
           resetBtn.textContent = "Reset";
           resetBtn.className = "btn btn-sm btn-warning me-2";
           resetBtn.disabled = !voter.has_voted;
-          resetBtn.onclick = () => resetTempVote(voter.id);
+          resetBtn.onclick = () => resetTempVote(voter.id, voter.nickname);
           actionCell.appendChild(resetBtn);
 
           // Remove button
@@ -450,8 +450,15 @@
         });
       }
 
-      function resetTempVote(voterId) {
-        if (confirm("Reset this participant's vote?")) {
+      function resetTempVote(voterId, nickname) {
+        if (confirm(`Are you sure you want to reset ${nickname}'s vote?`)) {
+          // Show loading state
+          const button = event.target;
+          const originalText = button.textContent;
+          button.disabled = true;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm"></span>';
+
           fetch("/reset_temp_vote", {
             method: "POST",
             headers: {
@@ -459,14 +466,41 @@
             },
             body: JSON.stringify({ voter_id: voterId }),
           })
-            .then((response) => response.json())
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+              }
+              return response.json();
+            })
             .then((data) => {
               if (data.success) {
-                loadTempVoters();
-                updateContestantTable(data.votes);
+                showNotification(
+                  `Reset ${nickname}'s vote successfully`,
+                  "success"
+                );
+
+                // Immediately update the UI directly
+                updateTempVoterStatus(voterId, false, null);
+
+                // Update contestant table with new vote counts
+                if (data.votes) {
+                  updateContestantTable(data.votes);
+                }
               } else {
-                alert(data.error || "Failed to reset vote");
+                showNotification(
+                  `Failed to reset vote: ${data.error || "Unknown error"}`,
+                  "danger"
+                );
               }
+            })
+            .catch((error) => {
+              console.error("Error:", error);
+              showNotification(`Error: ${error.message}`, "danger");
+            })
+            .finally(() => {
+              // Restore button state
+              button.disabled = false;
+              button.innerHTML = originalText;
             });
         }
       }
@@ -527,9 +561,81 @@
       });
 
       socket.on("temp_vote_reset", function (data) {
+        console.log("Temp vote reset received:", data);
+
+        if (data && data.voter_id) {
+          // Update the UI when we receive a vote reset event
+          updateTempVoterStatus(data.voter_id, false, null);
+        }
+      });
+
+      socket.on("temp_vote_reset", function (data) {
         // Update voter row without full reload
         updateTempVoterStatus(data.voter_id, false);
       });
+
+      // 1. First, modify the temp_voter_voted event listener for better debugging:
+      socket.on("temp_voter_voted", function (data) {
+        console.log("Temp voter voted event received:", data);
+
+        // Make sure we have all required properties
+        if (!data || !data.voter_id) {
+          console.error("Invalid vote data received:", data);
+          return;
+        }
+
+        // Try to update the specific row
+        const success = updateTempVoterStatus(data.voter_id, true, data.option);
+
+        // If we couldn't find the row, refresh the entire table
+        if (!success) {
+          console.log("Could not find voter row, refreshing entire table");
+          loadTempVoters();
+        }
+      });
+
+      // 2. Update the updateTempVoterStatus function to return success/failure
+      function updateTempVoterStatus(voterId, hasVoted, option = null) {
+        console.log("Updating voter status:", voterId, hasVoted, option);
+
+        if (!voterId) {
+          console.error("No voter ID provided for status update");
+          return false;
+        }
+
+        // Find the row by data attribute
+        const row = document.querySelector(`tr[data-voter-id="${voterId}"]`);
+        if (!row) {
+          console.warn("Could not find row for voter ID:", voterId);
+          return false;
+        }
+
+        console.log("Found row for voter:", voterId);
+
+        // Update the Has Voted cell
+        const votedCell = row.querySelector("td:nth-child(3)");
+        if (votedCell) {
+          votedCell.innerHTML = hasVoted
+            ? '<span class="badge bg-success">Yes</span>'
+            : '<span class="badge bg-danger">No</span>';
+        }
+
+        // Update the Voted For cell
+        const choiceCell = row.querySelector("td:nth-child(4)");
+        if (choiceCell) {
+          choiceCell.textContent = hasVoted && option ? option : "N/A";
+        }
+
+        // Update Reset button state
+        const resetBtn = row.querySelector(
+          "td:nth-child(5) button:first-child"
+        );
+        if (resetBtn) {
+          resetBtn.disabled = !hasVoted;
+        }
+
+        return true;
+      }
 
       // Add this with your other socket listeners
       socket.on("temp_voter_voted", function (data) {
@@ -596,27 +702,37 @@
       }
 
       function updateTempVoterStatus(voterId, hasVoted, option = null) {
-        // Use a more specific selector that includes the data attribute
+        console.log("Updating voter status:", voterId, hasVoted, option);
+
+        // Find the row by data attribute
         const row = document.querySelector(`tr[data-voter-id="${voterId}"]`);
         if (!row) {
-          console.log("Could not find row for voter ID:", voterId);
-          // If we can't find the row, we might need to refresh the whole table
+          console.warn("Could not find row for voter ID:", voterId);
+          // If we can't find the row, refresh the whole table
           loadTempVoters();
           return;
         }
 
-        const votedCell = row.children[2];
-        const choiceCell = row.children[3];
-        const resetBtn = row.children[4].querySelector("button:first-child");
+        // Update the Has Voted cell (index 2)
+        const votedCell = row.querySelector("td:nth-child(3)");
+        if (votedCell) {
+          votedCell.innerHTML = hasVoted
+            ? '<span class="badge bg-success">Yes</span>'
+            : '<span class="badge bg-danger">No</span>';
+        }
 
-        if (hasVoted) {
-          votedCell.innerHTML = '<span class="badge bg-success">Yes</span>';
-          choiceCell.textContent = option || "N/A";
-          resetBtn.disabled = false;
-        } else {
-          votedCell.innerHTML = '<span class="badge bg-danger">No</span>';
-          choiceCell.textContent = "N/A";
-          resetBtn.disabled = true;
+        // Update the Voted For cell (index 3)
+        const choiceCell = row.querySelector("td:nth-child(4)");
+        if (choiceCell) {
+          choiceCell.textContent = hasVoted && option ? option : "N/A";
+        }
+
+        // Update Reset button state (first button in the actions cell)
+        const resetBtn = row.querySelector(
+          "td:nth-child(5) button:first-child"
+        );
+        if (resetBtn) {
+          resetBtn.disabled = !hasVoted;
         }
       }
 

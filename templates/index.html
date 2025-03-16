@@ -952,6 +952,42 @@
           });
       });
 
+      // Combined handler to replace both existing ones
+      socket.on("participant_vote_reset", function (data) {
+        // Get current user's voter_id
+        const currentUserId = "{{ session.get('voter_id', '') }}";
+
+        // Check if this reset is for the current user
+        if (data.voter_id == currentUserId) {
+          console.log("My vote was reset by admin");
+
+          // Show notification to user
+          showNotification(
+            "Your vote has been reset by an administrator. You may vote again.",
+            "warning"
+          );
+
+          // Re-enable all voting buttons
+          const voteButtons = document.querySelectorAll(
+            "#voting-options .option-btn, .vote-button"
+          );
+          voteButtons.forEach((btn) => {
+            btn.disabled = false;
+          });
+
+          // Update display elements
+          const votedDisplay = document.getElementById("voted-display");
+          if (votedDisplay) {
+            votedDisplay.style.display = "none";
+          }
+
+          // Animation effects
+          const minionEyes = document.querySelector(".minion-eyes");
+          minionEyes.textContent = "😲👀";
+          setTimeout(() => (minionEyes.textContent = "👁️👁️"), 2000);
+        }
+      });
+
       // Add this to your JavaScript section
       function setupSearch() {
         const searchInput = document.getElementById("search-options");
