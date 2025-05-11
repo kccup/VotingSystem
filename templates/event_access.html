@@ -1,91 +1,347 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>Event Access - Minion Voting System</title>
+    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Join Voting Event</title>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
     />
     <style>
-      :root {
-        --minion-yellow: #ffe13c;
-        --minion-blue: #2c92d1;
-      }
-
       body {
-        font-family: "Nunito", sans-serif;
-        background-color: var(--minion-yellow);
+        background-color: #ffe13c;
         background-image: url("https://www.transparenttextures.com/patterns/cubes.png");
-        margin: 0;
-        padding: 20px;
-        height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        min-height: 100vh;
       }
-
-      .container {
+      .join-container {
+        max-width: 500px;
+        margin: 100px auto;
+        padding: 30px;
         background-color: white;
         border-radius: 20px;
-        padding: 40px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        max-width: 500px;
-        width: 100%;
         text-align: center;
       }
-
-      h1 {
-        color: var(--minion-blue);
-        margin-bottom: 30px;
+      .event-code {
+        font-size: 3rem;
+        font-weight: bold;
+        letter-spacing: 8px;
+        margin: 20px 0;
+        color: #333;
+      }
+      .minion-img {
+        max-width: 100px;
+        margin: 0 auto 20px;
+      }
+      .qr-container {
+        margin: 20px auto;
+      }
+      .qr-code {
+        border-radius: 10px;
+        transition: transform 0.3s;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        background: white;
+      }
+      .qr-code:hover {
+        transform: scale(1.05);
+      }
+      .horizontal-divider {
+        width: 80%;
+        text-align: center;
+        position: relative;
+      }
+      .horizontal-divider::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background-color: #dee2e6;
+      }
+      .horizontal-divider span {
+        position: relative;
+        background-color: #ffe13c;
+        padding: 0 15px;
+        font-weight: bold;
+        border-radius: 20px;
+      }
+      #random-name {
+        background-color: #ffe13c;
+        border-color: #f9d100;
+        color: #333;
       }
 
-      .minion-eyes {
-        font-size: 2rem;
-        margin-bottom: 20px;
-        letter-spacing: 10px;
+      #random-name:hover {
+        background-color: #f9d100;
+        border-color: #e6c300;
       }
 
-      .error-message {
-        color: #ff3333;
-        margin-bottom: 15px;
+      /* Make the dropdown match your theme */
+      #nickname {
+        border-color: #dee2e6;
+      }
+
+      #nickname:focus {
+        border-color: #ffe13c;
+        box-shadow: 0 0 0 0.25rem rgba(255, 225, 60, 0.25);
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <div class="minion-eyes">👁️👁️</div>
-      <h1>Enter Event Access Code</h1>
+      <div class="join-container">
+        <img
+          src="https://clipart-library.com/image_gallery2/Minion-PNG-Image.png"
+          class="minion-img"
+          alt="Minion"
+        />
+        <h1>Join Voting Event</h1>
 
-      {% if error %}
-      <div class="error-message">{{ error }}</div>
-      {% endif %}
+        <div class="text-center mb-4">
+          <div class="qr-container">
+            <h4>Scan to join:</h4>
+            <div id="qr-placeholder" class="mb-3">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading QR code...</span>
+              </div>
+              <p class="text-muted">Loading QR code...</p>
+            </div>
+            <p class="text-muted small">
+              Scan this code to access the voting system
+            </p>
+          </div>
 
-      <form method="post" class="mb-4">
-        <div class="mb-3">
-          <p>Please enter the code provided by event organizers:</p>
-          <input
-            type="text"
-            class="form-control form-control-lg text-center"
-            name="access_code"
-            placeholder="Enter code"
-            required
-            autofocus
-          />
+          <div class="d-flex justify-content-center">
+            <div class="horizontal-divider my-4">
+              <span>OR</span>
+            </div>
+          </div>
         </div>
-        <div class="mb-3">
+
+        <form method="post" action="/event-access">
+          {% if event_code %}
+          <div class="mb-4">
+            <p>Event Code:</p>
+            <div class="event-code">{{ event_code }}</div>
+          </div>
+          {% endif %}
+
+          <div class="mb-4">
+            <label for="nickname" class="form-label"
+              >Choose your Minion name:</label
+            >
+            <div class="input-group">
+              <select
+                class="form-select form-select-lg text-center"
+                id="nickname"
+                name="nickname"
+                required
+              >
+                <option value="" disabled selected>Select a name</option>
+                <option value="Stuart">Stuart</option>
+                <option value="Kevin">Kevin</option>
+                <option value="Bob">Bob</option>
+                <option value="Dave">Dave</option>
+                <option value="Jerry">Jerry</option>
+                <option value="Tim">Tim</option>
+                <option value="Carl">Carl</option>
+                <option value="Phil">Phil</option>
+                <option value="Tom">Tom</option>
+                <option value="Mark">Mark</option>
+                <option value="Norbert">Norbert</option>
+                <option value="Steve">Steve</option>
+                <option value="Ken">Ken</option>
+                <option value="Jorge">Jorge</option>
+                <option value="Lance">Lance</option>
+              </select>
+              <button type="button" class="btn btn-warning" id="random-name">
+                <i class="bi bi-shuffle"></i> Random
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label for="access_code" class="form-label"
+              >Event Access Code:</label
+            >
+            <input
+              type="text"
+              class="form-control form-control-lg text-center"
+              id="access_code"
+              name="access_code"
+              placeholder="Enter code"
+              required
+            />
+          </div>
+
+          {% if error %}
+          <div class="alert alert-danger mb-4">{{ error }}</div>
+          {% endif %}
+
           <button type="submit" class="btn btn-primary btn-lg w-100">
-            Join Voting
+            Join Event
           </button>
-        </div>
-      </form>
+        </form>
 
-      <div class="mt-4">
-        <p class="text-muted">
-          Attending the club event in person? Ask a club leader for the access
-          code!
-        </p>
+        <div class="mt-4 text-center">
+          <hr class="my-4" />
+          <a href="/admin-login" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-shield-lock"></i> Administrator Login
+          </a>
+        </div>
       </div>
     </div>
+
+    <script>
+      // Fetch the QR code on page load
+      document.addEventListener("DOMContentLoaded", function () {
+        fetch("/generate_qr")
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Network response was not ok");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            const qrPlaceholder = document.getElementById("qr-placeholder");
+            qrPlaceholder.innerHTML = "";
+
+            const qrImg = document.createElement("img");
+            qrImg.src = data.qr_code;
+            qrImg.alt = "QR Code for voting access";
+            qrImg.style.maxWidth = "200px";
+            qrImg.className = "img-fluid qr-code border p-2";
+
+            qrPlaceholder.appendChild(qrImg);
+          })
+          .catch((error) => {
+            console.error("Error fetching QR code:", error);
+            document.getElementById("qr-placeholder").innerHTML =
+              '<p class="text-danger">Failed to load QR code</p>';
+          });
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Additional minion names and titles
+        const minionTitles = [
+          "the Banana Lover",
+          "the Brave",
+          "the Silly",
+          "the Wise",
+          "the Adventurer",
+          "the Troublemaker",
+          "the Giggler",
+          "the Prankster",
+          "the Curious",
+          "the Banana King",
+          "the Unstoppable",
+          "the Legend",
+        ];
+
+        // Track used names in localStorage to simulate server-side tracking
+        let usedNames = [];
+        try {
+          const stored = localStorage.getItem("usedMinionNames");
+          if (stored) usedNames = JSON.parse(stored);
+        } catch (e) {
+          console.log("Could not load used names");
+        }
+
+        const randomNameBtn = document.getElementById("random-name");
+        const nicknameSelect = document.getElementById("nickname");
+
+        // Get all base name options (without any modifications)
+        const allBaseNames = Array.from(nicknameSelect.options)
+          .slice(1) // Skip the placeholder
+          .map((opt) => opt.value);
+
+        function generateName() {
+          // First try: Use a base name if any are available
+          const availableBaseNames = allBaseNames.filter(
+            (name) => !usedNames.includes(name)
+          );
+
+          if (availableBaseNames.length > 0) {
+            // We still have unused base names
+            const randomName =
+              availableBaseNames[
+                Math.floor(Math.random() * availableBaseNames.length)
+              ];
+            selectNameInDropdown(randomName);
+            return;
+          }
+
+          // Second try: Add a title to a base name
+          const baseName =
+            allBaseNames[Math.floor(Math.random() * allBaseNames.length)];
+          const randomTitle =
+            minionTitles[Math.floor(Math.random() * minionTitles.length)];
+          const nameWithTitle = `${baseName} ${randomTitle}`;
+
+          // Check if this titled name is used
+          if (!usedNames.includes(nameWithTitle)) {
+            addNameToDropdown(nameWithTitle);
+            return;
+          }
+
+          // Third try: Add a random number as last resort
+          let nameWithNumber;
+          do {
+            const randomNumber = Math.floor(Math.random() * 99) + 1;
+            nameWithNumber = `${baseName} #${randomNumber}`;
+          } while (usedNames.includes(nameWithNumber));
+
+          addNameToDropdown(nameWithNumber);
+        }
+
+        function addNameToDropdown(name) {
+          // Add the new name to the dropdown
+          const newOption = document.createElement("option");
+          newOption.text = name;
+          newOption.value = name;
+          nicknameSelect.add(newOption);
+          newOption.selected = true;
+        }
+
+        function selectNameInDropdown(name) {
+          // Find and select existing name in dropdown
+          for (let i = 0; i < nicknameSelect.options.length; i++) {
+            if (nicknameSelect.options[i].value === name) {
+              nicknameSelect.selectedIndex = i;
+              return;
+            }
+          }
+        }
+
+        function rememberSelectedName() {
+          // Save selected name to used names
+          if (nicknameSelect.selectedIndex > 0) {
+            const selectedName =
+              nicknameSelect.options[nicknameSelect.selectedIndex].value;
+            if (!usedNames.includes(selectedName)) {
+              usedNames.push(selectedName);
+              localStorage.setItem(
+                "usedMinionNames",
+                JSON.stringify(usedNames)
+              );
+            }
+          }
+        }
+
+        // Add event listeners
+        randomNameBtn.addEventListener("click", generateName);
+        nicknameSelect.addEventListener("change", rememberSelectedName);
+
+        // Generate a random name on page load
+        generateName();
+
+        // Add form submission handler to remember the final chosen name
+        const form = document.querySelector("form");
+        form.addEventListener("submit", rememberSelectedName);
+      });
+    </script>
   </body>
 </html>

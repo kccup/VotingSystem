@@ -12,6 +12,10 @@
       href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css"
+    />
     <style>
       :root {
         --minion-yellow: #ffe13c;
@@ -302,29 +306,83 @@
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
       }
     </style>
+    <script>
+      // Detect when app goes online/offline
+      window.addEventListener("online", function () {
+        if (typeof showNotification === "function") {
+          showNotification("You're back online!", "success");
+        }
+      });
+
+      window.addEventListener("offline", function () {
+        if (typeof showNotification === "function") {
+          showNotification(
+            "You're offline. Please check your connection.",
+            "danger"
+          );
+        }
+      });
+    </script>
   </head>
   <body>
     <div class="container text-center">
       <div class="minion-eyes">👁️👁️</div>
       <h1>Bananaaaaa Voting!</h1>
+      <div class="alert alert-warning" role="alert">
+        <i class="bi bi-geo-alt-fill me-2"></i>
+        <strong>Important:</strong> This voting system is for in-person event
+        attendees only. Virtual participation is not permitted.
+      </div>
       <div class="voter-status mb-4">
-        {% if session.get('voter_username') %}
+        {% if session.get('voter_id') %}
         <div class="alert alert-info">
-          <p>
-            Logged in as <strong>{{ session.get('voter_username') }}</strong>
-          </p>
-          <a href="/voter/logout" class="btn btn-sm btn-outline-secondary"
-            >Logout</a
+          <p>Voting as <strong>{{ session.get('nickname') }}</strong></p>
+          <button
+            onclick="confirmLeaveEvent()"
+            class="btn btn-sm btn-outline-secondary"
           >
+            <i class="bi bi-box-arrow-left me-1"></i>Leave Event
+          </button>
+        </div>
+        {% elif session.get('logged_in') and session.get('is_admin') %}
+        <div class="alert alert-warning">
+          <p>
+            <i class="bi bi-shield-lock-fill"></i>
+            <strong>Admin Mode</strong>
+          </p>
+          <a href="/admin" class="btn btn-sm btn-primary">Admin Dashboard</a>
+          <a href="/logout" class="btn btn-sm btn-outline-secondary">Logout</a>
         </div>
         {% else %}
-        <div class="login-buttons">
-          <a href="/voter/login" class="btn btn-primary">Login</a>
-          <a href="/voter/register" class="btn btn-outline-primary">Register</a>
+        <div class="mt-3">
+          <a href="/event-access" class="btn btn-primary">Join Event</a>
         </div>
         {% endif %}
       </div>
       <div class="minion-mouth">😄</div>
+
+      <!-- Add this right above the voting options div -->
+      <div class="search-container mb-3">
+        <div class="input-group">
+          <span class="input-group-text">
+            <i class="bi bi-search"></i>
+          </span>
+          <input
+            type="text"
+            id="search-options"
+            class="form-control"
+            placeholder="Search for contestants..."
+            autocomplete="off"
+          />
+          <button
+            class="btn btn-outline-secondary"
+            type="button"
+            id="clear-search"
+          >
+            <i class="bi bi-x"></i>
+          </button>
+        </div>
+      </div>
 
       <div id="voting-options" class="mb-4">
         <!-- Will be populated dynamically -->
@@ -339,14 +397,6 @@
         <div id="qr-placeholder">
           <p>Loading QR code...</p>
         </div>
-      </div>
-
-      <div class="mt-4">
-        <a href="/admin" class="btn btn-secondary">Admin Dashboard</a>
-      </div>
-
-      <div class="mt-4">
-        <a href="/login" class="btn btn-secondary">Admin Access</a>
       </div>
 
       <!--
@@ -579,6 +629,7 @@
       document.addEventListener("DOMContentLoaded", function () {
         loadVotingOptions();
         generateQRCode();
+        setupSearch(); // Add this line
 
         // Listen for real-time updates
         socket.on("update_votes", function (votes) {
@@ -688,38 +739,304 @@
           })
           .catch((error) => console.error("Error fetching QR code:", error));
       });
-    </script>
 
-    <script>
-      // Wait for page to load
-      document.addEventListener("DOMContentLoaded", function () {
-        // Fetch the QR code from the server
-        fetch("/generate_qr")
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error("Network response was not ok");
-            }
-            return response.json();
+      function confirmBackToAccess() {
+        if (
+          confirm(
+            "Are you sure you want to return to the access page? You will need to enter the access code again."
+          )
+        ) {
+          // Clear the event verification from session
+          fetch("/clear-event-access", { method: "POST" }).then(() => {
+            // Redirect to event access page
+            window.location.href = "/event-access";
+          });
+        }
+      }
+
+      // Add this function to your JavaScript (can replace the confirmBackToAccess function)
+      function confirmLeaveEvent() {
+        if (
+          confirm(
+            "Warning: Leaving will remove your vote from the tally. Are you sure you want to leave this event?"
+          )
+        ) {
+          // Show loading indicator
+          const button = document.querySelector(
+            'button[onclick="confirmLeaveEvent()"]'
+          );
+          const originalText = button.innerHTML;
+          button.disabled = true;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Leaving...';
+
+          // Clear the session
+          fetch("/clear-session", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
           })
-          .then((data) => {
-            console.log("QR code data received:", data);
-            const qrPlaceholder = document.getElementById("qr-placeholder");
-            qrPlaceholder.innerHTML = "";
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error("Server returned " + response.status);
+              }
+              // Don't try to parse JSON, just redirect
+              window.location.href = "/event-access";
+            })
+            .catch((error) => {
+              console.error("Error leaving event:", error);
+              // Restore button state
+              button.disabled = false;
+              button.innerHTML = originalText;
+              // Show error message
+              showNotification(
+                "Failed to leave event. Please try again.",
+                "danger"
+              );
+              // Force redirect as fallback
+              setTimeout(() => (window.location.href = "/event-access"), 2000);
+            });
+        }
+      }
 
-            const qrImg = document.createElement("img");
-            qrImg.src = data.qr_code;
-            qrImg.alt = "QR Code for voting";
-            qrImg.style.maxWidth = "200px";
-            qrImg.className = "img-fluid";
+      // Using the socket that was already initialized earlier
+      socket.on("update_votes", function (votes) {
+        updateVotingOptions(votes);
+        updateVotingDisplay(votes);
+      });
 
-            qrPlaceholder.appendChild(qrImg);
-          })
-          .catch((error) => {
-            console.error("Error fetching QR code:", error);
-            document.getElementById("qr-placeholder").innerHTML =
-              '<p class="text-danger">Failed to load QR code</p>';
+      socket.on("votes_reset", function () {
+        // Show notification that votes were reset
+        showNotification("All votes have been reset by the administrator");
+
+        // Create a zero-votes object from existing options
+        fetch("/get_votes")
+          .then((response) => response.json())
+          .then((votes) => {
+            // Create a new object with same keys but zero values
+            const resetVotes = {};
+            Object.keys(votes).forEach((key) => {
+              resetVotes[key] = 0;
+            });
+
+            // Update the UI with all zeros
+            updateVotingOptions(resetVotes);
+            updateVotingDisplay(resetVotes);
           });
       });
+
+      // Connection status indicator for voters too
+      socket.on("connect", function () {
+        console.log("Connected to server");
+      });
+
+      socket.on("disconnect", function () {
+        showNotification(
+          "Lost connection to server. Reconnecting...",
+          "warning"
+        );
+      });
+
+      socket.on("reconnect", function () {
+        showNotification("Reconnected!", "success");
+        // Refresh content
+        fetchVotes();
+      });
+
+      function showNotification(message, type = "info") {
+        // Create or update a notification div
+        let notification = document.getElementById("notification");
+        if (!notification) {
+          notification = document.createElement("div");
+          notification.id = "notification";
+          notification.className =
+            "toast-container position-fixed top-0 end-0 p-3";
+          document.body.appendChild(notification);
+        }
+
+        const toast = document.createElement("div");
+        toast.className = `toast show bg-${type}`;
+        toast.innerHTML = `
+          <div class="toast-header">
+            <strong class="me-auto">Voting System</strong>
+            <button type="button" class="btn-close" onclick="this.parentNode.parentNode.remove()"></button>
+          </div>
+          <div class="toast-body text-white">
+            ${message}
+          </div>
+        `;
+
+        notification.appendChild(toast);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+          toast.remove();
+        }, 5000);
+      }
+
+      function fetchVotes() {
+        fetch("/get_votes")
+          .then((response) => response.json())
+          .then((votes) => {
+            updateVotingOptions(votes);
+            updateVotingDisplay(votes);
+          });
+      }
+
+      // Add this to the existing socket event listeners in index.html
+      socket.on("participant_removed", function (data) {
+        console.log("Participant removed event received:", data);
+
+        // Get current user ID either from session template variable or localStorage backup
+        const currentUserId =
+          "{{ session.get('voter_id', '') }}" ||
+          localStorage.getItem("current_voter_id");
+        console.log("Current user ID:", currentUserId, "Removed ID:", data.id);
+
+        // Store voter_id in localStorage as backup when socket connects
+        if (
+          !localStorage.getItem("current_voter_id") &&
+          "{{ session.get('voter_id', '') }}"
+        ) {
+          localStorage.setItem(
+            "current_voter_id",
+            "{{ session.get('voter_id', '') }}"
+          );
+        }
+
+        // Use == for loose comparison since types might differ (string vs number)
+        if (data.id == currentUserId || data.id === currentUserId) {
+          console.log("Current user was removed - redirecting to access page");
+
+          // Show notification that the user has been removed
+          showNotification(
+            "Your access to this event has been revoked by an administrator",
+            "warning"
+          );
+
+          // Clear local storage
+          localStorage.removeItem("current_voter_id");
+
+          // Immediate redirect with a brief delay
+          setTimeout(function () {
+            window.location.href = "/event-access";
+          }, 2000);
+        }
+      });
+
+      // Add these event listeners with your other socket listeners in index.html
+      socket.on("contestant_added", function (data) {
+        console.log("New contestant added:", data.name);
+        showNotification(`New option added: "${data.name}"`, "info");
+
+        // Fetch all updated options to ensure we have the complete list
+        fetch("/get_votes")
+          .then((response) => response.json())
+          .then((votes) => {
+            updateVotingOptions(votes);
+            updateVotingDisplay(votes);
+          });
+      });
+
+      socket.on("contestant_removed", function (data) {
+        console.log("Contestant removed:", data.name);
+        showNotification(`Option removed: "${data.name}"`, "warning");
+
+        // Fetch all updated options to ensure we have the complete list
+        fetch("/get_votes")
+          .then((response) => response.json())
+          .then((votes) => {
+            updateVotingOptions(votes);
+            updateVotingDisplay(votes);
+          });
+      });
+
+      // Combined handler to replace both existing ones
+      socket.on("participant_vote_reset", function (data) {
+        // Get current user's voter_id
+        const currentUserId = "{{ session.get('voter_id', '') }}";
+
+        // Check if this reset is for the current user
+        if (data.voter_id == currentUserId) {
+          console.log("My vote was reset by admin");
+
+          // Show notification to user
+          showNotification(
+            "Your vote has been reset by an administrator. You may vote again.",
+            "warning"
+          );
+
+          // Re-enable all voting buttons
+          const voteButtons = document.querySelectorAll(
+            "#voting-options .option-btn, .vote-button"
+          );
+          voteButtons.forEach((btn) => {
+            btn.disabled = false;
+          });
+
+          // Update display elements
+          const votedDisplay = document.getElementById("voted-display");
+          if (votedDisplay) {
+            votedDisplay.style.display = "none";
+          }
+
+          // Animation effects
+          const minionEyes = document.querySelector(".minion-eyes");
+          minionEyes.textContent = "😲👀";
+          setTimeout(() => (minionEyes.textContent = "👁️👁️"), 2000);
+        }
+      });
+
+      // Add this to your JavaScript section
+      function setupSearch() {
+        const searchInput = document.getElementById("search-options");
+        const clearButton = document.getElementById("clear-search");
+
+        searchInput.addEventListener("input", filterOptions);
+        clearButton.addEventListener("click", clearSearch);
+
+        function filterOptions() {
+          const searchTerm = searchInput.value.toLowerCase().trim();
+          const optionButtons = document.querySelectorAll(
+            "#voting-options .option-btn"
+          );
+
+          let hasVisibleOptions = false;
+
+          optionButtons.forEach((button) => {
+            const optionText = button.textContent.toLowerCase();
+            if (searchTerm === "" || optionText.includes(searchTerm)) {
+              button.style.display = "";
+              hasVisibleOptions = true;
+            } else {
+              button.style.display = "none";
+            }
+          });
+
+          // Show message if no options match
+          let noResultsMessage = document.getElementById("no-results-message");
+          if (!hasVisibleOptions) {
+            if (!noResultsMessage) {
+              noResultsMessage = document.createElement("div");
+              noResultsMessage.id = "no-results-message";
+              noResultsMessage.className = "alert alert-info mt-2";
+              noResultsMessage.textContent = "No contestants match your search";
+              document
+                .getElementById("voting-options")
+                .appendChild(noResultsMessage);
+            }
+          } else if (noResultsMessage) {
+            noResultsMessage.remove();
+          }
+        }
+
+        function clearSearch() {
+          searchInput.value = "";
+          filterOptions();
+          searchInput.focus();
+        }
+      }
     </script>
   </body>
 </html>

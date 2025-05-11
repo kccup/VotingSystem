@@ -17,7 +17,27 @@
       .action-btn {
         margin: 5px;
       }
+      .connection-status {
+        z-index: 1050;
+      }
     </style>
+    <script>
+      // Detect when app goes online/offline
+      window.addEventListener("online", function () {
+        if (typeof showNotification === "function") {
+          showNotification("You're back online!", "success");
+        }
+      });
+
+      window.addEventListener("offline", function () {
+        if (typeof showNotification === "function") {
+          showNotification(
+            "You're offline. Please check your connection.",
+            "danger"
+          );
+        }
+      });
+    </script>
   </head>
   <body>
     <div class="container">
@@ -55,12 +75,40 @@
         </div>
       </div>
 
+      <div class="row mb-4">
+        <div class="col">
+          <h3>Event Participants</h3>
+          <div class="card p-3">
+            <div class="card-body">
+              <p class="text-muted">
+                Current event participants: <span id="event-user-count">0</span>
+              </p>
+              <div class="table-responsive">
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>Nickname</th>
+                      <th>Joined</th>
+                      <th>Has Voted</th>
+                      <th>Voted For</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="temp-voters-table">
+                    <!-- Will be filled by JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="row">
         <div class="col">
-          <button class="btn btn-danger" id="reset-votes">
-            Reset All Votes
+          <button id="reset-votes" class="btn btn-danger">
+            <i class="bi bi-trash"></i> Reset All Votes
           </button>
-          <a href="/" class="btn btn-secondary">Back to Voting Page</a>
         </div>
       </div>
 
@@ -68,6 +116,13 @@
         <div class="col">
           <a href="/logout" class="btn btn-secondary">Logout</a>
         </div>
+      </div>
+    </div>
+
+    <div class="connection-status position-fixed bottom-0 end-0 p-3">
+      <div id="socket-status" class="badge bg-secondary">
+        <span class="spinner-border spinner-border-sm" role="status"></span>
+        Connecting...
       </div>
     </div>
 
@@ -79,10 +134,16 @@
       // Load initial data and set up listeners
       document.addEventListener("DOMContentLoaded", function () {
         loadContestants();
+        loadTempVoters(); // Add this line
 
-        // Set up WebSocket listener
+        // Set up WebSocket listeners
         socket.on("update_votes", function (votes) {
           updateContestantTable(votes);
+        });
+
+        socket.on("votes_reset", function () {
+          // Refresh the users table when votes are reset
+          loadTempVoters(); // Refresh temp voters when votes are reset
         });
 
         // Add event listeners
@@ -103,31 +164,36 @@
       }
 
       function updateContestantTable(votes) {
-        const tableBody = document.getElementById("contestants-table");
-        tableBody.innerHTML = "";
+        const table = document.getElementById("contestants-table");
+        table.innerHTML = "";
 
         Object.entries(votes)
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .forEach(([name, voteCount]) => {
+          .sort()
+          .forEach(([name, count]) => {
             const row = document.createElement("tr");
 
+            // Name cell
             const nameCell = document.createElement("td");
             nameCell.textContent = name;
+            row.appendChild(nameCell);
 
+            // Votes cell
             const votesCell = document.createElement("td");
-            votesCell.textContent = voteCount;
+            votesCell.textContent = count;
+            row.appendChild(votesCell);
 
+            // Action cell with remove button
             const actionCell = document.createElement("td");
             const removeBtn = document.createElement("button");
-            removeBtn.textContent = "Remove";
             removeBtn.className = "btn btn-sm btn-danger";
-            removeBtn.onclick = () => removeContestant(name);
+            removeBtn.innerHTML = '<i class="bi bi-trash"></i> Remove';
+            removeBtn.onclick = function () {
+              removeContestant(name);
+            };
             actionCell.appendChild(removeBtn);
-
-            row.appendChild(nameCell);
-            row.appendChild(votesCell);
             row.appendChild(actionCell);
-            tableBody.appendChild(row);
+
+            table.appendChild(row);
           });
       }
 
@@ -140,54 +206,560 @@
           return;
         }
 
-        fetch("/contestants/add", {
+        // Show loading state
+        const addButton = document.getElementById("add-contestant");
+        const originalText = addButton.textContent;
+        addButton.disabled = true;
+        addButton.innerHTML =
+          '<span class="spinner-border spinner-border-sm"></span> Adding...';
+
+        // Use the correct endpoint URL
+        fetch("/add_contestant", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ name: name }),
+          credentials: "same-origin",
         })
-          .then((response) => response.json())
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Server returned " + response.status);
+            }
+            return response.json();
+          })
           .then((data) => {
             if (data.success) {
               nameInput.value = "";
+              showNotification(`Added new option: "${name}"`, "success");
             } else {
-              alert(data.error || "Failed to add contestant");
+              showNotification(
+                data.error || "Failed to add contestant",
+                "danger"
+              );
             }
+          })
+          .catch((error) => {
+            console.error("Error adding contestant:", error);
+            showNotification(`Error: ${error.message}`, "danger");
+          })
+          .finally(() => {
+            // Restore button state
+            addButton.disabled = false;
+            addButton.textContent = originalText;
           });
       }
 
       function removeContestant(name) {
-        if (confirm(`Are you sure you want to remove ${name}?`)) {
-          fetch("/contestants/remove", {
+        if (
+          confirm(
+            `Are you sure you want to remove "${name}" from the voting options?`
+          )
+        ) {
+          // Show loading state
+          const btn = event.target;
+          const originalText = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML =
+            '<span class="spinner-border spinner-border-sm"></span>';
+
+          // Send request to server
+          fetch("/remove_contestant", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ name: name }),
           })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error("Server returned " + response.status);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              if (data.success) {
+                showNotification(
+                  `Contestant "${name}" removed successfully`,
+                  "success"
+                );
+                // The row will be removed by the socket event handler
+              } else {
+                showNotification(
+                  `Failed to remove contestant: ${
+                    data.error || "Unknown error"
+                  }`,
+                  "danger"
+                );
+                // Restore button
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+              }
+            })
+            .catch((error) => {
+              console.error("Error removing contestant:", error);
+              showNotification(`Error: ${error.message}`, "danger");
+              // Restore button
+              btn.disabled = false;
+              btn.innerHTML = originalText;
+            });
+        }
+      }
+
+      // Reset all votes function for admin.html
+      function resetVotes() {
+        if (
+          confirm(
+            "Are you sure you want to reset ALL votes? This action cannot be undone."
+          )
+        ) {
+          // Show loading state
+          const button = document.getElementById("reset-votes");
+          const originalText = button.innerHTML;
+          button.disabled = true;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Resetting...';
+
+          // Call server endpoint
+          fetch("/reset", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(
+                  `Server returned ${response.status}: ${response.statusText}`
+                );
+              }
+              return response.json();
+            })
+            .then((data) => {
+              console.log("Reset successful:", data);
+              showNotification(
+                "All votes have been reset successfully",
+                "success"
+              );
+
+              // Reload all data
+              loadContestants();
+              loadTempVoters();
+            })
+            .catch((error) => {
+              console.error("Reset failed:", error);
+              showNotification(
+                `Failed to reset votes: ${error.message}`,
+                "danger"
+              );
+            })
+            .finally(() => {
+              // Restore button state
+              button.disabled = false;
+              button.innerHTML = originalText;
+            });
+        }
+      }
+
+      // Load temporary voters data
+      function loadTempVoters() {
+        fetch("/get_temp_voters")
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              updateTempVotersTable(data.voters);
+            } else {
+              console.error("Failed to load temporary voters");
+            }
+          })
+          .catch((error) => {
+            console.error("Error loading temporary voters:", error);
+          });
+      }
+
+      // Update the temp voters table
+      function updateTempVotersTable(voters) {
+        const tableBody = document.getElementById("temp-voters-table");
+        const voterCount = document.getElementById("event-user-count");
+
+        tableBody.innerHTML = "";
+        voterCount.textContent = voters.length;
+
+        if (voters.length === 0) {
+          const row = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.colSpan = 5;
+          cell.textContent = "No active participants";
+          cell.className = "text-center";
+          row.appendChild(cell);
+          tableBody.appendChild(row);
+          return;
+        }
+
+        voters.forEach((voter) => {
+          const row = document.createElement("tr");
+          row.setAttribute("data-voter-id", voter.id);
+
+          // Nickname
+          const nameCell = document.createElement("td");
+          nameCell.textContent = voter.nickname;
+
+          // Join time
+          const joinedCell = document.createElement("td");
+          joinedCell.textContent = new Date(
+            voter.joined_at * 1000
+          ).toLocaleString();
+
+          // Has voted
+          const votedCell = document.createElement("td");
+          if (voter.has_voted) {
+            votedCell.innerHTML = '<span class="badge bg-success">Yes</span>';
+          } else {
+            votedCell.innerHTML = '<span class="badge bg-danger">No</span>';
+          }
+
+          // Voted for
+          const choiceCell = document.createElement("td");
+          choiceCell.textContent = voter.voted_for || "N/A";
+
+          // Actions
+          const actionCell = document.createElement("td");
+
+          // Reset vote button
+          const resetBtn = document.createElement("button");
+          resetBtn.textContent = "Reset";
+          resetBtn.className = "btn btn-sm btn-warning me-2";
+          resetBtn.disabled = !voter.has_voted;
+          resetBtn.onclick = () => resetTempVote(voter.id, voter.nickname);
+          actionCell.appendChild(resetBtn);
+
+          // Remove button
+          const removeBtn = document.createElement("button");
+          removeBtn.textContent = "Remove";
+          removeBtn.className = "btn btn-sm btn-danger";
+          removeBtn.onclick = () => removeTempVoter(voter.id, voter.nickname);
+          actionCell.appendChild(removeBtn);
+
+          row.appendChild(nameCell);
+          row.appendChild(joinedCell);
+          row.appendChild(votedCell);
+          row.appendChild(choiceCell);
+          row.appendChild(actionCell);
+          tableBody.appendChild(row);
+        });
+      }
+
+      function resetTempVote(voterId, nickname) {
+        if (confirm(`Are you sure you want to reset ${nickname}'s vote?`)) {
+          // Show loading state
+          const button = event.target;
+          const originalText = button.textContent;
+          button.disabled = true;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm"></span>';
+
+          fetch("/reset_temp_vote", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ voter_id: voterId }),
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              if (data.success) {
+                showNotification(
+                  `Reset ${nickname}'s vote successfully`,
+                  "success"
+                );
+
+                // Immediately update the UI directly
+                updateTempVoterStatus(voterId, false, null);
+
+                // Update contestant table with new vote counts
+                if (data.votes) {
+                  updateContestantTable(data.votes);
+                }
+              } else {
+                showNotification(
+                  `Failed to reset vote: ${data.error || "Unknown error"}`,
+                  "danger"
+                );
+              }
+            })
+            .catch((error) => {
+              console.error("Error:", error);
+              showNotification(`Error: ${error.message}`, "danger");
+            })
+            .finally(() => {
+              // Restore button state
+              button.disabled = false;
+              button.innerHTML = originalText;
+            });
+        }
+      }
+
+      function removeTempVoter(voterId, nickname) {
+        if (
+          confirm(`Are you sure you want to remove participant "${nickname}"?`)
+        ) {
+          fetch("/remove_temp_voter", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ voter_id: voterId }),
+          })
             .then((response) => response.json())
             .then((data) => {
-              if (!data.success) {
-                alert(data.error || "Failed to remove contestant");
+              if (data.success) {
+                loadTempVoters();
+                if (data.votesChanged) {
+                  updateContestantTable(data.votes);
+                }
+              } else {
+                alert(data.error || "Failed to remove participant");
               }
             });
         }
       }
 
-      function resetVotes() {
-        if (confirm("Are you sure you want to reset all votes to zero?")) {
-          fetch("/reset", {
-            method: "POST",
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              if (!data.success) {
-                alert("Failed to reset votes");
-              }
-            });
+      // Add this to your existing Socket.IO listeners in admin.html
+      socket.on("participant_joined", function (participant) {
+        // Add participant to table without full reload
+        addParticipantToTable(participant);
+        document.getElementById("event-user-count").textContent =
+          parseInt(document.getElementById("event-user-count").textContent) + 1;
+      });
+
+      socket.on("participant_removed", function (data) {
+        // Remove participant row without full reload
+        const row = document.querySelector(`tr[data-voter-id="${data.id}"]`);
+        if (row) row.remove();
+
+        const countEl = document.getElementById("event-user-count");
+        countEl.textContent = Math.max(0, parseInt(countEl.textContent) - 1);
+      });
+
+      socket.on("contestant_added", function (contestant) {
+        // Add new contestant to table without full reload
+        addContestantToTable(contestant);
+      });
+
+      socket.on("contestant_removed", function (data) {
+        // Remove contestant row without full reload
+        const row = document.querySelector(
+          `tr[data-contestant="${data.name}"]`
+        );
+        if (row) row.remove();
+      });
+
+      socket.on("temp_vote_reset", function (data) {
+        console.log("Temp vote reset received:", data);
+
+        if (data && data.voter_id) {
+          // Update the UI when we receive a vote reset event
+          updateTempVoterStatus(data.voter_id, false, null);
+        }
+      });
+
+      socket.on("temp_vote_reset", function (data) {
+        // Update voter row without full reload
+        updateTempVoterStatus(data.voter_id, false);
+      });
+
+      // 1. First, modify the temp_voter_voted event listener for better debugging:
+      socket.on("temp_voter_voted", function (data) {
+        console.log("Temp voter voted event received:", data);
+
+        // Make sure we have all required properties
+        if (!data || !data.voter_id) {
+          console.error("Invalid vote data received:", data);
+          return;
+        }
+
+        // Try to update the specific row
+        const success = updateTempVoterStatus(data.voter_id, true, data.option);
+
+        // If we couldn't find the row, refresh the entire table
+        if (!success) {
+          console.log("Could not find voter row, refreshing entire table");
+          loadTempVoters();
+        }
+      });
+
+      // 2. Update the updateTempVoterStatus function to return success/failure
+      function updateTempVoterStatus(voterId, hasVoted, option = null) {
+        console.log("Updating voter status:", voterId, hasVoted, option);
+
+        if (!voterId) {
+          console.error("No voter ID provided for status update");
+          return false;
+        }
+
+        // Find the row by data attribute
+        const row = document.querySelector(`tr[data-voter-id="${voterId}"]`);
+        if (!row) {
+          console.warn("Could not find row for voter ID:", voterId);
+          return false;
+        }
+
+        console.log("Found row for voter:", voterId);
+
+        // Update the Has Voted cell
+        const votedCell = row.querySelector("td:nth-child(3)");
+        if (votedCell) {
+          votedCell.innerHTML = hasVoted
+            ? '<span class="badge bg-success">Yes</span>'
+            : '<span class="badge bg-danger">No</span>';
+        }
+
+        // Update the Voted For cell
+        const choiceCell = row.querySelector("td:nth-child(4)");
+        if (choiceCell) {
+          choiceCell.textContent = hasVoted && option ? option : "N/A";
+        }
+
+        // Update Reset button state
+        const resetBtn = row.querySelector(
+          "td:nth-child(5) button:first-child"
+        );
+        if (resetBtn) {
+          resetBtn.disabled = !hasVoted;
+        }
+
+        return true;
+      }
+
+      // Add this with your other socket listeners
+      socket.on("temp_voter_voted", function (data) {
+        console.log("Temp voter voted:", data);
+        updateTempVoterStatus(data.voter_id, true, data.option);
+      });
+
+      // Helper functions for individual row updates
+      function addParticipantToTable(participant) {
+        // Implementation to add a single participant row
+        // This avoids reloading the entire table
+        const tableBody = document.getElementById("temp-voters-table");
+
+        // Clear "no participants" message if it exists
+        if (
+          tableBody.children.length === 1 &&
+          tableBody.children[0].children[0].colSpan === 5
+        ) {
+          tableBody.innerHTML = "";
+        }
+
+        const row = document.createElement("tr");
+        row.setAttribute("data-voter-id", participant.id);
+
+        // Add cells (same as in updateTempVotersTable function)
+        const nameCell = document.createElement("td");
+        nameCell.textContent = participant.nickname;
+
+        const joinedCell = document.createElement("td");
+        joinedCell.textContent = new Date(
+          participant.joined_at * 1000
+        ).toLocaleString();
+
+        const votedCell = document.createElement("td");
+        votedCell.innerHTML = '<span class="badge bg-danger">No</span>';
+
+        const choiceCell = document.createElement("td");
+        choiceCell.textContent = "N/A";
+
+        const actionCell = document.createElement("td");
+
+        const resetBtn = document.createElement("button");
+        resetBtn.textContent = "Reset";
+        resetBtn.className = "btn btn-sm btn-warning me-2";
+        resetBtn.disabled = true;
+        resetBtn.onclick = () => resetTempVote(participant.id);
+
+        const removeBtn = document.createElement("button");
+        removeBtn.textContent = "Remove";
+        removeBtn.className = "btn btn-sm btn-danger";
+        removeBtn.onclick = () =>
+          removeTempVoter(participant.id, participant.nickname);
+
+        actionCell.appendChild(resetBtn);
+        actionCell.appendChild(removeBtn);
+
+        row.appendChild(nameCell);
+        row.appendChild(joinedCell);
+        row.appendChild(votedCell);
+        row.appendChild(choiceCell);
+        row.appendChild(actionCell);
+
+        tableBody.prepend(row); // Add new participants at top
+      }
+
+      function updateTempVoterStatus(voterId, hasVoted, option = null) {
+        console.log("Updating voter status:", voterId, hasVoted, option);
+
+        // Find the row by data attribute
+        const row = document.querySelector(`tr[data-voter-id="${voterId}"]`);
+        if (!row) {
+          console.warn("Could not find row for voter ID:", voterId);
+          // If we can't find the row, refresh the whole table
+          loadTempVoters();
+          return;
+        }
+
+        // Update the Has Voted cell (index 2)
+        const votedCell = row.querySelector("td:nth-child(3)");
+        if (votedCell) {
+          votedCell.innerHTML = hasVoted
+            ? '<span class="badge bg-success">Yes</span>'
+            : '<span class="badge bg-danger">No</span>';
+        }
+
+        // Update the Voted For cell (index 3)
+        const choiceCell = row.querySelector("td:nth-child(4)");
+        if (choiceCell) {
+          choiceCell.textContent = hasVoted && option ? option : "N/A";
+        }
+
+        // Update Reset button state (first button in the actions cell)
+        const resetBtn = row.querySelector(
+          "td:nth-child(5) button:first-child"
+        );
+        if (resetBtn) {
+          resetBtn.disabled = !hasVoted;
         }
       }
+
+      // Add this to the existing script
+      // Connection status indicators
+      socket.on("connect", function () {
+        const statusEl = document.getElementById("socket-status");
+        statusEl.className = "badge bg-success";
+        statusEl.innerHTML = '<i class="bi bi-wifi"></i> Connected';
+
+        // Request a full data refresh when reconnecting
+        loadContestants();
+        loadTempVoters();
+      });
+
+      socket.on("disconnect", function () {
+        const statusEl = document.getElementById("socket-status");
+        statusEl.className = "badge bg-danger";
+        statusEl.innerHTML = '<i class="bi bi-wifi-off"></i> Disconnected';
+      });
+
+      socket.on("connect_error", function () {
+        const statusEl = document.getElementById("socket-status");
+        statusEl.className = "badge bg-warning";
+        statusEl.innerHTML =
+          '<i class="bi bi-exclamation-triangle"></i> Connection Error';
+      });
     </script>
   </body>
 </html>
